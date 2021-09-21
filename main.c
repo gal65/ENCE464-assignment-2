@@ -65,16 +65,6 @@ double *poisson_neumann(int n, double *source, int iterations, int threads,
                curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
                curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] -
                source_term);
-          if (i == n / 2 && j == n / 2 && k == n / 2 + 1) {
-            printf("center %f\n", next[IDX(n, i, j, k)]);
-            printf("%f\n", curr[IDX(n, i + ip, j, k)]);
-            printf("%f\n", curr[IDX(n, i - in, j, k)]);
-            printf("%f\n", curr[IDX(n, i, j + jp, k)]);
-            printf("%f\n", curr[IDX(n, i, j - jn, k)]);
-            printf("%f\n", curr[IDX(n, i, j, k + kp)]);
-            printf("%f\n", curr[IDX(n, i, j, k - kn)]);
-            printf("source %f\n\n", source_term);
-          }
         }
       }
     }
@@ -168,7 +158,7 @@ int main(int argc, char **argv) {
     printf("\n");
   }
 
-#define SECOND_SLICE
+/* #define SECOND_SLICE */
 #ifdef SECOND_SLICE
   printf("\n");
   for (int x = 0; x < n; ++x) {
