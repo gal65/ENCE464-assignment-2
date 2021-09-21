@@ -4,40 +4,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-/**
- * poisson.c
- * Implementation of a Poisson solver with Neumann boundary conditions.
- *
- * This template handles the basic program launch, argument parsing, and memory
- * allocation required to implement the solver *at its most basic level*. You
- * will likely need to allocate more memory, add threading support, account for
- * cache locality, etc...
- *
- * BUILDING:
- * g++ -o poisson poisson.c -lpthread
- *
- * [note: linking pthread isn't strictly needed until you add your
- *        multithreading code]
- *
- * TODO:
- * 1 - Read through this example, understand what it does and what it gives you
- *     to work with.
- * 2 - Implement the basic algorithm and get a correct output.
- * 3 - Add a timer to track how long your execution takes.
- * 4 - Profile your solution and identify weaknesses.
- * 5 - Improve it!
- * 6 - Remember that this is now *your* code and *you* should modify it however
- *     needed to solve the assignment.
- *
- * See the lab notes for a guide on profiling and an introduction to
- * multithreading (see also threads.c which is reference by the lab notes).
- */
-
 // Global flag
 // set to true when operating in debug mode to enable verbose logging
 static bool debug = false;
 
-#define INDEX(n, i, j, k) ((k) * (n) * (n) + (j) * (n) + i)
+#define IDX(n, i, j, k) (((k) * (n) + (j)) * (n) + (i))
 
 /**
  * @brief Solve Poissons equation for a given cube with Neumann boundary
@@ -80,20 +51,30 @@ double *poisson_neumann(int n, double *source, int iterations, int threads,
     for (int k = 0; k < n; k++) {
       for (int j = 0; j < n; j++) {
         for (int i = 0; i < n; i++) {
-          int ip = i == n - 1 ? i - 1 : i + 1;
-          int in = i == 0 ? 1 : i - 1;
-          int jp = j == n - 1 ? j - 1 : j + 1;
-          int jn = j == 0 ? 1 : j - 1;
-          int kp = k == n - 1 ? k - 1 : k + 1;
-          int kn = k == 0 ? 1 : k - 1;
+          int ip = (i == n - 1) ? -1 : 1;
+          int in = (i == 0) ? -1 : 1;
+          int jp = (j == n - 1) ? -1 : 1;
+          int jn = (j == 0) ? -1 : 1;
+          int kp = (k == n - 1) ? -1 : 1;
+          int kn = (k == 0) ? -1 : 1;
 
-          double source_term = delta * delta * source[INDEX(n, i, j, k)];
-          next[INDEX(n, i, j, k)] =
+          double source_term = delta * delta * source[IDX(n, i, j, k)];
+          next[IDX(n, i, j, k)] =
               1.0 / 6.0 *
-              (curr[INDEX(n, ip, j, k)] + curr[INDEX(n, in, j, k)] +
-               curr[INDEX(n, i, jp, k)] + curr[INDEX(n, i, jn, k)] +
-               curr[INDEX(n, i, j, kp)] + curr[INDEX(n, i, j, kn)] -
+              (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
+               curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
+               curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] -
                source_term);
+          if (i == n / 2 && j == n / 2 && k == n / 2 + 1) {
+            printf("center %f\n", next[IDX(n, i, j, k)]);
+            printf("%f\n", curr[IDX(n, i + ip, j, k)]);
+            printf("%f\n", curr[IDX(n, i - in, j, k)]);
+            printf("%f\n", curr[IDX(n, i, j + jp, k)]);
+            printf("%f\n", curr[IDX(n, i, j - jn, k)]);
+            printf("%f\n", curr[IDX(n, i, j, k + kp)]);
+            printf("%f\n", curr[IDX(n, i, j, k - kn)]);
+            printf("source %f\n\n", source_term);
+          }
         }
       }
     }
@@ -124,8 +105,8 @@ int main(int argc, char **argv) {
   // parse the command line arguments
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
-      printf(
-          "usage: poisson [-n size] [-i iterations] [-t threads] [--debug]\n");
+      printf("usage: poisson [-n size] [-i iterations] [-t threads] "
+             "[--debug]\n");
       return EXIT_SUCCESS;
     }
 
@@ -186,6 +167,17 @@ int main(int argc, char **argv) {
     }
     printf("\n");
   }
+
+#define SECOND_SLICE
+#ifdef SECOND_SLICE
+  printf("\n");
+  for (int x = 0; x < n; ++x) {
+    for (int y = 0; y < n; ++y) {
+      printf("%0.5f ", result[((n / 2 + 1) * n + y) * n + x]);
+    }
+    printf("\n");
+  }
+#endif
 
   free(source);
   free(result);
