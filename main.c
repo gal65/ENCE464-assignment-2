@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -44,8 +45,6 @@ double *poisson_neumann(int n, double *source, int iterations, int threads,
             n);
     exit(EXIT_FAILURE);
   }
-
-  memcpy(curr, source, n * n * n * sizeof(double));
 
   for (int iter = 0; iter < iterations; iter++) {
     for (int k = 0; k < n; k++) {
