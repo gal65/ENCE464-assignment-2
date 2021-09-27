@@ -1,4 +1,4 @@
-CFLAGS = -O3 -lpthread
+CFLAGS = -O3 -lpthread -Wall
 TARGET = main
 
 %: %.c
