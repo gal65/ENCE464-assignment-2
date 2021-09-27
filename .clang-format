@@ -5,6 +5,7 @@ PointerAlignment: Left
 AlignAfterOpenBracket: AlwaysBreak
 BinPackArguments: false
 AllowAllArgumentsOnNextLine: false
+IndentPPDirectives: BeforeHash
 
 # Braces on the same line, except for functions
 BreakBeforeBraces: Linux

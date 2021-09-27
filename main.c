@@ -4,28 +4,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 // Global flag
 // set to true when operating in debug mode to enable verbose logging
 static bool debug = false;
 
 #define IDX(n, i, j, k) (((k) * (n) + (j)) * (n) + (i))
+/* #define IDX(n, i, j, k) (((i) * (n) + (j)) * (n) + (k)) */
 
 #define BOUNDARY_THREAD
 
 #ifdef BOUNDARY_THREAD
-// start of iteration when only iterating over non-boundary cells
-#define INNER_START (1)
-// end of iteration when only iterating over non-boundary cells
-#define INNER_END (n - 1)
-#define LOOKAHEAD(x) 1
-#define LOOKBEHIND(x) -1
+    // start of iteration when only iterating over non-boundary cells
+    #define INNER_START (1)
+    // end of iteration when only iterating over non-boundary cells
+    #define INNER_END (n - 1)
+    #define LOOKAHEAD(x) 1
+    #define LOOKBEHIND(x) -1
 #else
-// Not using boundary thread
-#define INNER_START (0)
-#define INNER_END (n)
-#define LOOKAHEAD(x) ((x == n - 1) ? -1 : 1)
-#define LOOKBEHIND(x) ((x == 0) ? 1 : -1)
+    // Not using boundary thread
+    #define INNER_START (0)
+    #define INNER_END (n)
+    #define LOOKAHEAD(x) ((x == n - 1) ? -1 : 1)
+    #define LOOKBEHIND(x) ((x == 0) ? 1 : -1)
 #endif
 
 #define BLOCK_SIZE 8
@@ -61,24 +63,35 @@ void* worker(void* vargs)
     int n = args->n;
 
     // top/bottom: +-j, front/back: +-k
-    double *top, *bottom, *front, *back, *middle, *source_ptr, *next_ptr;
+#define BUF_POINTERS X(top) X(bottom) X(front) X(back) X(middle) X(source_ptr) X(next_ptr)
+#define X(name) double* name;
+    BUF_POINTERS
+#undef X
 
     for (int iter = 0; iter < args->iterations; iter++) {
 
         // reset pointers to their staring position
-        top = &curr[IDX(n, 1, 0, args->k_start)];
-        bottom = &curr[IDX(n, 1, 2, args->k_start)];
 
-        front = &curr[IDX(n, 1, 1, args->k_start - 1)];
-        back = &curr[IDX(n, 1, 1, args->k_start + 1)];
-
+        // middle, source_pts, next_ptr all start at the same location (in different buffers).
+        // This is at coordinate (1, 1, k_start), ie the origin for this thread's slice.
+        // Note the inset of one (ie. not starting at 0), because the boundary is not handled by
+        // this worker.
         middle = &curr[IDX(n, 1, 1, args->k_start)];
         source_ptr = &args->source[IDX(n, 1, 1, args->k_start)];
         next_ptr = &next[IDX(n, 1, 1, args->k_start)];
 
+        // top and bottom start above and below (j=0, 2) the middle pointer
+        top = &curr[IDX(n, 1, 0, args->k_start)];
+        bottom = &curr[IDX(n, 1, 2, args->k_start)];
+
+        // front and back start into and out of the page (k = start-1, start+1) from the middle
+        // pointer
+        front = &curr[IDX(n, 1, 1, args->k_start - 1)];
+        back = &curr[IDX(n, 1, 1, args->k_start + 1)];
+
         for (int k = args->k_start; k < args->k_end; k++) {
-            // loop tiling: iterate over j in blocks
-            for (int j_block = 1; j_block < INNER_END; j_block += BLOCK_SIZE) {
+            // loop tiling AKA strip mining: iterate over j in blocks
+            for (int j_block = 1; j_block < n - 1; j_block += BLOCK_SIZE) {
                 int j_next = MIN(n - 1, j_block + BLOCK_SIZE);
                 for (int j = j_block; j < j_next; j++) {
                     // note that i,j,k in this worker thread are always from 1 to n-1 (inclusive).
@@ -94,29 +107,28 @@ void* worker(void* vargs)
                     }
                     // Since the boundary thread is handling the boundaries (one column on each
                     // side), skip these by incrementing by 2
-                    top += 2;
-                    bottom += 2;
-                    front += 2;
-                    back += 2;
-                    middle += 2;
-                    source_ptr += 2;
-                    next_ptr += 2;
+#define X(name) name += 2;
+                    BUF_POINTERS
+#undef X
                 }
             }
             // boundary thread is handling one slice on top and bottom (k == 0 and k == n-1), so
             // skip over these
-            top += 2 * n;
-            bottom += 2 * n;
-            front += 2 * n;
-            back += 2 * n;
-            middle += 2 * n;
-            source_ptr += 2 * n;
-            next_ptr += 2 * n;
+#define X(name) name += 2 * n;
+            BUF_POINTERS
+#undef X
         }
 
         double* temp = curr;
         curr = next;
         next = temp;
+
+#ifdef PRINT_TIMESTAMP
+        struct timeval t;
+        gettimeofday(&t, NULL);
+        printf("worker wait %ld\n", t.tv_usec);
+#endif
+
         pthread_barrier_wait(&barrier);
     }
     return NULL;
@@ -143,6 +155,9 @@ inline void do_cell(
                              curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
 }
 
+// TODO at large number of threads or large sizes, boundary thread will surpass worker threads in
+// work required. Need to allocate a proportional amount of threads to the boundary so other threads
+// are not stuck waiting. OR: each thread does it's own boundary scan
 void* boundary_worker(void* vargs)
 {
     boundary_thread_args_t* args = (boundary_thread_args_t*)vargs;
@@ -192,6 +207,12 @@ void* boundary_worker(void* vargs)
         double* temp = curr;
         curr = next;
         next = temp;
+
+#ifdef PRINT_TIMESTAMP
+        struct timeval t;
+        gettimeofday(&t, NULL);
+        printf("boundary wait %ld\n", t.tv_usec);
+#endif
         pthread_barrier_wait(&barrier);
     }
     return NULL;
@@ -226,8 +247,7 @@ double* poisson_neumann(int n, double* source, int iterations, int num_threads, 
     thread_args_t* thread_args = (thread_args_t*)malloc(num_threads * sizeof(thread_args_t));
     double delta_squared = delta * delta;
 
-#ifdef BOUNDARY_THREAD
-    // Init the boundary thread if enabled
+    // Init the boundary thread
     pthread_barrier_init(&barrier, NULL, num_threads + 1);
     boundary_thread_args_t args = {
         .source = source,
@@ -238,25 +258,20 @@ double* poisson_neumann(int n, double* source, int iterations, int num_threads, 
         .delta_squared = delta_squared};
     pthread_t boundary_thread;
     pthread_create(&boundary_thread, NULL, &boundary_worker, &args);
-#else
-    pthread_barrier_init(&barrier, NULL, num_threads);
-#endif
 
+    // init the worker threads
     for (int thread_idx = 0; thread_idx < num_threads; thread_idx++) {
         int block_size = n / num_threads;
-        int k_start = thread_idx * block_size;
+        // if the first thread, it's block should start at 1 (not 0) because of boundary
+        int k_start = thread_idx == 0 ? 1 : thread_idx * block_size;
 
-        // if the last thread, it's block should go all the way to the end of the array
-        int k_end = thread_idx == num_threads - 1 ? n : (thread_idx + 1) * block_size;
-#ifdef BOUNDARY_THREAD
+        // if the last thread, it's block should go all the way to the end of the array (minus
+        // boundary)
+        int k_end = thread_idx == num_threads - 1 ? n - 1 : (thread_idx + 1) * block_size;
         // If using boundary thread, the main threads should not touch the boundaries of k
         if (thread_idx == 0) {
             k_start = 1;
         }
-        if (thread_idx == num_threads - 1) {
-            k_end = n - 1;
-        }
-#endif
 
         thread_args[thread_idx] = (thread_args_t){
             .source = source,
@@ -274,10 +289,7 @@ double* poisson_neumann(int n, double* source, int iterations, int num_threads, 
     for (int thread_idx = 0; thread_idx < num_threads; thread_idx++) {
         pthread_join(threads[thread_idx], NULL);
     }
-
-#ifdef BOUNDARY_THREAD
     pthread_join(boundary_thread, NULL);
-#endif
 
     if (iterations % 2 != 0) {
         double* temp = curr;
