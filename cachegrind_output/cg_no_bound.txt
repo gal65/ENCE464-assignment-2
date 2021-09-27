@@ -1,0 +1,287 @@
+--------------------------------------------------------------------------------
+I1 cache:         32768 B, 64 B, 8-way associative
+D1 cache:         32768 B, 64 B, 8-way associative
+LL cache:         6291456 B, 64 B, 12-way associative
+Command:          ./main -n 51 -i 300 -t 4
+Data file:        cachegrind.out.22793
+Events recorded:  Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw
+Events shown:     Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw
+Event sort order: Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw
+Thresholds:       0.1 100 100 100 100 100 100 100 100
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                     I1mr           ILmr           Dr                   D1mr                DLmr            Dw                  D1mw               DLmw            
+--------------------------------------------------------------------------------
+1,184,566,860 (100.0%) 1,565 (100.0%) 1,515 (100.0%) 323,085,453 (100.0%) 19,732,051 (100.0%) 18,305 (100.0%) 41,686,543 (100.0%) 4,994,003 (100.0%) 33,988 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                     I1mr        ILmr        Dr                   D1mr                DLmr            Dw                  D1mw               DLmw             file:function
+--------------------------------------------------------------------------------
+1,177,285,336 (99.39%)  9 ( 0.58%)  9 ( 0.59%) 321,708,648 (99.57%) 19,724,901 (99.96%) 16,581 (90.58%) 39,804,948 (95.49%) 4,975,285 (99.63%) 16,589 (48.81%)  /home/liam/programming/ence464-assignment-2/main.c:worker
+    2,145,279 ( 0.18%) 79 ( 5.05%) 79 ( 5.21%)     427,230 ( 0.13%)         11 ( 0.00%)      9 ( 0.05%)    253,374 ( 0.61%)         5 ( 0.00%)      0           ???:__printf_fp_l
+
+--------------------------------------------------------------------------------
+-- Auto-annotated source: /home/liam/programming/ence464-assignment-2/main.c
+--------------------------------------------------------------------------------
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@ WARNING @@ WARNING @@ WARNING @@ WARNING @@ WARNING @@ WARNING @@ WARNING @@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@ Source file '/home/liam/programming/ence464-assignment-2/main.c' is more recent than input file 'cachegrind.out.22793'.
+@ Annotations may not be correct.
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+Ir                   I1mr       ILmr       Dr                   D1mr                DLmr            Dw                  D1mw               DLmw            
+
+-- line 44 ----------------------------------------
+          .          .          .                    .                   .               .                   .                  .               .               int n;
+          .          .          .                    .                   .               .                   .                  .               .               int iterations;
+          .          .          .                    .                   .               .                   .                  .               .               double delta_squared;
+          .          .          .                    .                   .               .                   .                  .               .           } boundary_thread_args_t;
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .           pthread_barrier_t barrier;
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .           void* worker(void* vargs)
+         32 ( 0.00%) 0          0                    0                   0               0                  24 ( 0.00%)         4 ( 0.00%)      4 ( 0.01%)  {
+          .          .          .                    .                   .               .                   .                  .               .               thread_args_t* args = (thread_args_t*)vargs;
+          4 ( 0.00%) 0          0                    4 ( 0.00%)          0               0                   0                  0               0               double* curr = args->curr;
+          8 ( 0.00%) 0          0                    4 ( 0.00%)          3 ( 0.00%)      0                   4 ( 0.00%)         4 ( 0.00%)      4 ( 0.01%)      double* next = args->next;
+          8 ( 0.00%) 0          0                    4 ( 0.00%)          0               0                   4 ( 0.00%)         0               0               int n = args->n;
+          .          .          .                    .                   .               .                   .                  .               .           
+     12,048 ( 0.00%) 2 ( 0.13%) 2 ( 0.13%)       6,008 ( 0.00%)      3,020 ( 0.02%)      0               1,216 ( 0.00%)         0               0               for (int iter = 0; iter < args->iterations; iter++) {
+    156,900 ( 0.01%) 2 ( 0.13%) 2 ( 0.13%)     126,000 ( 0.04%)     15,524 ( 0.08%)      0               3,600 ( 0.01%)         0               0                   for (int k = args->k_start; k < args->k_end; k++) {
+  7,833,600 ( 0.66%) 0          0            1,560,600 ( 0.48%)          1 ( 0.00%)      0                   0                  0               0                       for (int j = I_START; j < I_END; j++) {
+158,400,900 (13.37%) 0          0                    0                   0               0                   0                  0               0                           for (int i = I_START; i < I_END; i++) {
+ 79,599,000 ( 6.72%) 1 ( 0.06%) 1 ( 0.07%)  79,591,800 (24.63%)  4,975,506 (25.22%)      0               3,600 ( 0.01%)         0               0                               double source_term = args->delta_squared * args->source[IDX(n, i, j, k)];
+ 79,590,600 ( 6.72%) 0          0                    0                   0               0          39,795,300 (95.46%) 4,975,277 (99.63%) 16,581 (48.78%)                      next[IDX(n, i, j, k)] = 1.0 / 6.0 *
+278,567,100 (23.52%) 0          0           39,795,300 (12.32%)     84,682 ( 0.43%)     18 ( 0.10%)          0                  0               0                                                       (curr[IDX(n, i + LOOKAHEAD(i), j, k)] +
+238,771,800 (20.16%) 0          0                    0                   0               0                   0                  0               0                                                        curr[IDX(n, i + LOOKBEHIND(i), j, k)] +
+  6,242,400 ( 0.53%) 0          0            1,560,600 ( 0.48%)          0               0                   0                  0               0                                                        curr[IDX(n, i, j + LOOKAHEAD(j), k)] +
+  9,363,600 ( 0.79%) 1 ( 0.06%) 1 ( 0.07%)           0                   0               0                   0                  0               0                                                        curr[IDX(n, i, j + LOOKBEHIND(j), k)] +
+    137,700 ( 0.01%) 0          0               45,900 ( 0.01%)          0               0                   0                  0               0                                                        curr[IDX(n, i, j, k + LOOKAHEAD(k))] +
+318,607,200 (26.90%) 3 ( 0.19%) 3 ( 0.20%) 199,022,400 (61.60%) 14,646,161 (74.23%) 16,563 (90.48%)          0                  0               0                                                        curr[IDX(n, i, j, k + LOOKBEHIND(k))] - source_term);
+          .          .          .                    .                   .               .                   .                  .               .                           }
+          .          .          .                    .                   .               .                   .                  .               .                       }
+          .          .          .                    .                   .               .                   .                  .               .                   }
+          .          .          .                    .                   .               .                   .                  .               .                   double* temp = curr;
+          .          .          .                    .                   .               .                   .                  .               .                   curr = next;
+          .          .          .                    .                   .               .                   .                  .               .                   next = temp;
+      2,400 ( 0.00%) 0          0                    0                   0               0               1,200 ( 0.00%)         0               0                   pthread_barrier_wait(&barrier);
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .               return NULL;
+         36 ( 0.00%) 0          0                   28 ( 0.00%)          4 ( 0.00%)      0                   0                  0               0           }
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .           /**
+          .          .          .                    .                   .               .                   .                  .               .            * Do cell update while checking all boundary conditions
+          .          .          .                    .                   .               .                   .                  .               .            */
+          .          .          .                    .                   .               .                   .                  .               .           inline void do_cell(
+          .          .          .                    .                   .               .                   .                  .               .               double* source, double* curr, double* next, double delta_squared, int n, int i, int j, int k)
+          .          .          .                    .                   .               .                   .                  .               .           {
+          .          .          .                    .                   .               .                   .                  .               .               int ip = (i == n - 1) ? -1 : 1;
+-- line 87 ----------------------------------------
+-- line 148 ----------------------------------------
+          .          .          .                    .                   .               .                   .                  .               .                   curr = next;
+          .          .          .                    .                   .               .                   .                  .               .                   next = temp;
+          .          .          .                    .                   .               .                   .                  .               .                   pthread_barrier_wait(&barrier);
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .               return NULL;
+          .          .          .                    .                   .               .                   .                  .               .           }
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .           double* poisson_neumann(int n, double* source, int iterations, int num_threads, float delta)
+         12 ( 0.00%) 2 ( 0.13%) 2 ( 0.13%)           0                   0               0                  10 ( 0.00%)         2 ( 0.00%)      0           {
+          2 ( 0.00%) 0          0                    1 ( 0.00%)          1 ( 0.00%)      1 ( 0.01%)          0                  0               0               if (debug) {
+          .          .          .                    .                   .               .                   .                  .               .                   printf(
+          .          .          .                    .                   .               .                   .                  .               .                       "Starting solver with:\n"
+          .          .          .                    .                   .               .                   .                  .               .                       "n = %i\n"
+          .          .          .                    .                   .               .                   .                  .               .                       "iterations = %i\n"
+          .          .          .                    .                   .               .                   .                  .               .                       "num_threads = %i\n"
+          .          .          .                    .                   .               .                   .                  .               .                       "delta = %f\n",
+          .          .          .                    .                   .               .                   .                  .               .                       n,
+          .          .          .                    .                   .               .                   .                  .               .                       iterations,
+          .          .          .                    .                   .               .                   .                  .               .                       num_threads,
+          .          .          .                    .                   .               .                   .                  .               .                       delta);
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .               // Allocate some buffers to calculate the solution in
+         12 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           1 ( 0.00%)          0               0                   3 ( 0.00%)         0               0               double* curr = (double*)calloc(n * n * n, sizeof(double));
+          5 ( 0.00%) 0          0                    0                   0               0                   2 ( 0.00%)         0               0               double* next = (double*)calloc(n * n * n, sizeof(double));
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .               // Ensure we haven't run out of memory
+          4 ( 0.00%) 0          0                    0                   0               0                   0                  0               0               if (curr == NULL || next == NULL) {
+          .          .          .                    .                   .               .                   .                  .               .                   fprintf(stderr, "Error: ran out of memory when trying to allocate %i sized cube\n", n);
+          .          .          .                    .                   .               .                   .                  .               .                   exit(EXIT_FAILURE);
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .           
+          4 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           1 ( 0.00%)          0               0                   2 ( 0.00%)         0               0               pthread_t* threads = (pthread_t*)malloc(num_threads * sizeof(pthread_t));
+          4 ( 0.00%) 0          0                    0                   0               0                   2 ( 0.00%)         0               0               thread_args_t* thread_args = (thread_args_t*)malloc(num_threads * sizeof(thread_args_t));
+          4 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           1 ( 0.00%)          0               0                   1 ( 0.00%)         0               0               double delta_squared = delta * delta;
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .           #ifdef BOUNDARY_THREAD
+          .          .          .                    .                   .               .                   .                  .               .               // Init the boundary thread if enabled
+          .          .          .                    .                   .               .                   .                  .               .               pthread_barrier_init(&barrier, NULL, num_threads + 1);
+          .          .          .                    .                   .               .                   .                  .               .               boundary_thread_args_t args = {
+          .          .          .                    .                   .               .                   .                  .               .                   .source = source,
+          .          .          .                    .                   .               .                   .                  .               .                   .curr = curr,
+          .          .          .                    .                   .               .                   .                  .               .                   .next = next,
+          .          .          .                    .                   .               .                   .                  .               .                   .n = n,
+          .          .          .                    .                   .               .                   .                  .               .                   .iterations = iterations,
+          .          .          .                    .                   .               .                   .                  .               .                   .delta_squared = delta_squared};
+          .          .          .                    .                   .               .                   .                  .               .               pthread_t boundary_thread;
+          .          .          .                    .                   .               .                   .                  .               .               pthread_create(&boundary_thread, NULL, &boundary_worker, &args);
+          .          .          .                    .                   .               .                   .                  .               .           #else
+          4 ( 0.00%) 0          0                    0                   0               0                   1 ( 0.00%)         0               0               pthread_barrier_init(&barrier, NULL, num_threads);
+          .          .          .                    .                   .               .                   .                  .               .           #endif
+          .          .          .                    .                   .               .                   .                  .               .           
+         29 ( 0.00%) 0          0                    4 ( 0.00%)          0               0                   0                  0               0               for (int thread_idx = 0; thread_idx < num_threads; thread_idx++) {
+          9 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           1 ( 0.00%)          0               0                   1 ( 0.00%)         0               0                   int block_size = n / num_threads;
+          .          .          .                    .                   .               .                   .                  .               .                   int k_start = thread_idx * block_size;
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .                   // if the last thread, it's block should go all the way to the end of the array
+         33 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)          11 ( 0.00%)          0               0                   1 ( 0.00%)         0               0                   int k_end = thread_idx == num_threads - 1 ? n : (thread_idx + 1) * block_size;
+          .          .          .                    .                   .               .                   .                  .               .           #ifdef BOUNDARY_THREAD
+          .          .          .                    .                   .               .                   .                  .               .                   // If using boundary thread, the main threads should not touch the boundaries of k
+          .          .          .                    .                   .               .                   .                  .               .                   if (thread_idx == 0) {
+          .          .          .                    .                   .               .                   .                  .               .                       k_start = 1;
+          .          .          .                    .                   .               .                   .                  .               .                   }
+          .          .          .                    .                   .               .                   .                  .               .                   if (thread_idx == num_threads - 1) {
+          .          .          .                    .                   .               .                   .                  .               .                       k_end = n - 1;
+          .          .          .                    .                   .               .                   .                  .               .                   }
+          .          .          .                    .                   .               .                   .                  .               .           #endif
+          .          .          .                    .                   .               .                   .                  .               .           
+         44 ( 0.00%) 0          0                   20 ( 0.00%)          0               0                  16 ( 0.00%)         2 ( 0.00%)      2 ( 0.01%)          thread_args[thread_idx] = (thread_args_t){
+          .          .          .                    .                   .               .                   .                  .               .                       .source = source,
+          .          .          .                    .                   .               .                   .                  .               .                       .curr = curr,
+          .          .          .                    .                   .               .                   .                  .               .                       .next = next,
+          .          .          .                    .                   .               .                   .                  .               .                       .n = n,
+          .          .          .                    .                   .               .                   .                  .               .                       .k_start = k_start,
+          .          .          .                    .                   .               .                   .                  .               .                       .k_end = k_end,
+          .          .          .                    .                   .               .                   .                  .               .                       .iterations = iterations,
+          .          .          .                    .                   .               .                   .                  .               .                       .delta_squared = delta_squared};
+          .          .          .                    .                   .               .                   .                  .               .           
+         20 ( 0.00%) 0          0                    0                   0               0                   4 ( 0.00%)         0               0                   pthread_create(&threads[thread_idx], NULL, &worker, &thread_args[thread_idx]);
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .           
+         12 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           0                   0               0                   0                  0               0               for (int thread_idx = 0; thread_idx < num_threads; thread_idx++) {
+         12 ( 0.00%) 0          0                    4 ( 0.00%)          1 ( 0.00%)      0                   4 ( 0.00%)         0               0                   pthread_join(threads[thread_idx], NULL);
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .           #ifdef BOUNDARY_THREAD
+          .          .          .                    .                   .               .                   .                  .               .               pthread_join(boundary_thread, NULL);
+          .          .          .                    .                   .               .                   .                  .               .           #endif
+          .          .          .                    .                   .               .                   .                  .               .           
+          2 ( 0.00%) 0          0                    1 ( 0.00%)          1 ( 0.00%)      0                   0                  0               0               if (iterations % 2 != 0) {
+          .          .          .                    .                   .               .                   .                  .               .                   double* temp = curr;
+          .          .          .                    .                   .               .                   .                  .               .                   curr = next;
+          .          .          .                    .                   .               .                   .                  .               .                   next = temp;
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .           
+          2 ( 0.00%) 0          0                    1 ( 0.00%)          0               0                   1 ( 0.00%)         0               0               free(next);
+          2 ( 0.00%) 0          0                    1 ( 0.00%)          0               0                   1 ( 0.00%)         0               0               free(threads);
+          2 ( 0.00%) 0          0                    1 ( 0.00%)          0               0                   1 ( 0.00%)         0               0               free(thread_args);
+          .          .          .                    .                   .               .                   .                  .               .           
+          2 ( 0.00%) 0          0                    1 ( 0.00%)          0               0                   0                  0               0               if (debug) {
+          .          .          .                    .                   .               .                   .                  .               .                   printf("Finished solving.\n");
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .               return curr;
+          9 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           8 ( 0.00%)          1 ( 0.00%)      0                   0                  0               0           }
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .           int main(int argc, char** argv)
+          8 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           0                   0               0                   7 ( 0.00%)         0               0           {
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .               // default settings for solver
+         52 ( 0.00%) 0          0                   51 ( 0.00%)          0               0                   1 ( 0.00%)         0               0               int iterations = 10;
+          1 ( 0.00%) 0          0                    0                   0               0                   1 ( 0.00%)         0               0               int n = 5;
+          1 ( 0.00%) 0          0                    0                   0               0                   1 ( 0.00%)         0               0               int threads = 1;
+          .          .          .                    .                   .               .                   .                  .               .               float delta = 1;
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .               // parse the command line arguments
+         14 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           3 ( 0.00%)          0               0                   0                  0               0               for (int i = 1; i < argc; ++i) {
+         40 ( 0.00%) 3 ( 0.19%) 3 ( 0.20%)           9 ( 0.00%)          0               0                   3 ( 0.00%)         0               0                   if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+          .          .          .                    .                   .               .                   .                  .               .                       printf("usage: poisson [-n size] [-i iterations] [-t threads] "
+          .          .          .                    .                   .               .                   .                  .               .                              "[--debug]\n");
+          .          .          .                    .                   .               .                   .                  .               .                       return EXIT_SUCCESS;
+          .          .          .                    .                   .               .                   .                  .               .                   }
+          .          .          .                    .                   .               .                   .                  .               .           
+         14 ( 0.00%) 0          0                    4 ( 0.00%)          0               0                   0                  0               0                   if (strcmp(argv[i], "-n") == 0) {
+          5 ( 0.00%) 0          0                    1 ( 0.00%)          0               0                   1 ( 0.00%)         0               0                       if (i == argc - 1) {
+          .          .          .                    .                   .               .                   .                  .               .                           fprintf(stderr, "Error: expected size after -n!\n");
+          .          .          .                    .                   .               .                   .                  .               .                           return EXIT_FAILURE;
+          .          .          .                    .                   .               .                   .                  .               .                       }
+          .          .          .                    .                   .               .                   .                  .               .           
+          2 ( 0.00%) 0          0                    0                   0               0                   0                  0               0                       n = atoi(argv[++i]);
+          .          .          .                    .                   .               .                   .                  .               .                   }
+          .          .          .                    .                   .               .                   .                  .               .           
+         13 ( 0.00%) 0          0                    7 ( 0.00%)          0               0                   0                  0               0                   if (strcmp(argv[i], "-i") == 0) {
+          2 ( 0.00%) 0          0                    1 ( 0.00%)          0               0                   0                  0               0                       if (i == argc - 1) {
+          .          .          .                    .                   .               .                   .                  .               .                           fprintf(stderr, "Error: expected iterations after -i!\n");
+          .          .          .                    .                   .               .                   .                  .               .                           return EXIT_FAILURE;
+          .          .          .                    .                   .               .                   .                  .               .                       }
+          .          .          .                    .                   .               .                   .                  .               .           
+          3 ( 0.00%) 0          0                    0                   0               0                   0                  0               0                       iterations = atoi(argv[++i]);
+          .          .          .                    .                   .               .                   .                  .               .                   }
+          .          .          .                    .                   .               .                   .                  .               .           
+         11 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           6 ( 0.00%)          0               0                   0                  0               0                   if (strcmp(argv[i], "-t") == 0) {
+          2 ( 0.00%) 0          0                    1 ( 0.00%)          0               0                   0                  0               0                       if (i == argc - 1) {
+          .          .          .                    .                   .               .                   .                  .               .                           fprintf(stderr, "Error: expected threads after -t!\n");
+          .          .          .                    .                   .               .                   .                  .               .                           return EXIT_FAILURE;
+          .          .          .                    .                   .               .                   .                  .               .                       }
+          .          .          .                    .                   .               .                   .                  .               .           
+          3 ( 0.00%) 0          0                    0                   0               0                   0                  0               0                       threads = atoi(argv[++i]);
+          .          .          .                    .                   .               .                   .                  .               .                   }
+          .          .          .                    .                   .               .                   .                  .               .           
+         16 ( 0.00%) 0          0                    1 ( 0.00%)          0               0                   3 ( 0.00%)         0               0                   if (strcmp(argv[i], "--debug") == 0) {
+          .          .          .                    .                   .               .                   .                  .               .                       debug = true;
+          .          .          .                    .                   .               .                   .                  .               .                   }
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .               // ensure we have an odd sized cube
+          2 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           1 ( 0.00%)          0               0                   0                  0               0               if (n % 2 == 0) {
+          .          .          .                    .                   .               .                   .                  .               .                   fprintf(stderr, "Error: n should be an odd number!\n");
+          .          .          .                    .                   .               .                   .                  .               .                   return EXIT_FAILURE;
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .               // Create a source term with a single point in the centre
+          8 ( 0.00%) 0          0                    1 ( 0.00%)          0               0                   1 ( 0.00%)         0               0               double* source = (double*)calloc(n * n * n, sizeof(double));
+          2 ( 0.00%) 0          0                    0                   0               0                   0                  0               0               if (source == NULL) {
+          .          .          .                    .                   .               .                   .                  .               .                   fprintf(stderr, "Error: failed to allocated source term (n=%i)\n", n);
+          .          .          .                    .                   .               .                   .                  .               .                   return EXIT_FAILURE;
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .           
+          7 ( 0.00%) 0          0                    1 ( 0.00%)          0               0                   1 ( 0.00%)         1 ( 0.00%)      0               source[(n * n * n) / 2] = 1;
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .               // Calculate the resulting field with Neumann conditions
+          9 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           4 ( 0.00%)          2 ( 0.00%)      1 ( 0.01%)          2 ( 0.00%)         1 ( 0.00%)      0               double* result = poisson_neumann(n, source, iterations, threads, delta);
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .               // Print out the middle slice of the cube for validation
+        359 ( 0.00%) 0          0                  102 ( 0.00%)          0               0                   0                  0               0               for (int x = 0; x < n; ++x) {
+     13,107 ( 0.00%) 0          0                2,601 ( 0.00%)          0               0                   0                  0               0                   for (int y = 0; y < n; ++y) {
+     10,415 ( 0.00%) 2 ( 0.13%) 2 ( 0.13%)       2,601 ( 0.00%)        327 ( 0.00%)      0               2,602 ( 0.01%)         0               0                       printf("%0.5f ", result[((n / 2) * n + y) * n + x]);
+          .          .          .                    .                   .               .                   .                  .               .                   }
+        153 ( 0.00%) 0          0                    0                   0               0                 102 ( 0.00%)         0               0                   printf("\n");
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .           
+          .          .          .                    .                   .               .                   .                  .               .           /* #define SECOND_SLICE */
+          .          .          .                    .                   .               .                   .                  .               .           #ifdef SECOND_SLICE
+          .          .          .                    .                   .               .                   .                  .               .               printf("\n");
+          .          .          .                    .                   .               .                   .                  .               .               for (int x = 0; x < n; ++x) {
+          .          .          .                    .                   .               .                   .                  .               .                   for (int y = 0; y < n; ++y) {
+          .          .          .                    .                   .               .                   .                  .               .                       printf("%0.5f ", result[((n / 2 + 1) * n + y) * n + x]);
+          .          .          .                    .                   .               .                   .                  .               .                   }
+          .          .          .                    .                   .               .                   .                  .               .                   printf("\n");
+          .          .          .                    .                   .               .                   .                  .               .               }
+          .          .          .                    .                   .               .                   .                  .               .           #endif
+          .          .          .                    .                   .               .                   .                  .               .           
+          2 ( 0.00%) 1 ( 0.06%) 1 ( 0.07%)           0                   0               0                   1 ( 0.00%)         0               0               free(source);
+          2 ( 0.00%) 0          0                    1 ( 0.00%)          0               0                   1 ( 0.00%)         0               0               free(result);
+          .          .          .                    .                   .               .                   .                  .               .           
+          2 ( 0.00%) 0          0                    0                   0               0                   0                  0               0               return EXIT_SUCCESS;
+          8 ( 0.00%) 1 ( 0.06%) 0                    7 ( 0.00%)          1 ( 0.00%)      0                   0                  0               0           }
+
+--------------------------------------------------------------------------------
+Ir                     I1mr        ILmr        Dr                   D1mr                DLmr            Dw                  D1mw               DLmw            
+--------------------------------------------------------------------------------
+1,177,309,828 (99.39%) 30 ( 1.92%) 29 ( 1.91%) 321,714,108 (99.58%) 19,725,235 (99.97%) 16,583 (90.59%) 39,807,725 (95.49%) 4,975,291 (99.63%) 16,591 (48.81%)  events annotated
+
