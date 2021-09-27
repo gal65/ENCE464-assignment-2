@@ -14,17 +14,22 @@ static bool debug = false;
 #define BOUNDARY_THREAD
 
 #ifdef BOUNDARY_THREAD
-#define I_START (1)
-#define I_END (n - 1)
+// start of iteration when only iterating over non-boundary cells
+#define INNER_START (1)
+// end of iteration when only iterating over non-boundary cells
+#define INNER_END (n - 1)
 #define LOOKAHEAD(x) 1
 #define LOOKBEHIND(x) -1
 #else
 // Not using boundary thread
-#define I_START (0)
-#define I_END (n)
+#define INNER_START (0)
+#define INNER_END (n)
 #define LOOKAHEAD(x) ((x == n - 1) ? -1 : 1)
 #define LOOKBEHIND(x) ((x == 0) ? 1 : -1)
 #endif
+
+#define BLOCK_SIZE 8
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
 typedef struct {
     double* source;
@@ -55,21 +60,60 @@ void* worker(void* vargs)
     double* next = args->next;
     int n = args->n;
 
+    // top/bottom: +-j, front/back: +-k
+    double *top, *bottom, *front, *back, *middle, *source_ptr, *next_ptr;
+
     for (int iter = 0; iter < args->iterations; iter++) {
+
+        // reset pointers to their staring position
+        top = &curr[IDX(n, 1, 0, args->k_start)];
+        bottom = &curr[IDX(n, 1, 2, args->k_start)];
+
+        front = &curr[IDX(n, 1, 1, args->k_start - 1)];
+        back = &curr[IDX(n, 1, 1, args->k_start + 1)];
+
+        middle = &curr[IDX(n, 1, 1, args->k_start)];
+        source_ptr = &args->source[IDX(n, 1, 1, args->k_start)];
+        next_ptr = &next[IDX(n, 1, 1, args->k_start)];
+
         for (int k = args->k_start; k < args->k_end; k++) {
-            for (int j = I_START; j < I_END; j++) {
-                for (int i = I_START; i < I_END; i++) {
-                    double source_term = args->delta_squared * args->source[IDX(n, i, j, k)];
-                    next[IDX(n, i, j, k)] = 1.0 / 6.0 *
-                                            (curr[IDX(n, i + LOOKAHEAD(i), j, k)] +
-                                             curr[IDX(n, i + LOOKBEHIND(i), j, k)] +
-                                             curr[IDX(n, i, j + LOOKAHEAD(j), k)] +
-                                             curr[IDX(n, i, j + LOOKBEHIND(j), k)] +
-                                             curr[IDX(n, i, j, k + LOOKAHEAD(k))] +
-                                             curr[IDX(n, i, j, k + LOOKBEHIND(k))] - source_term);
+            // loop tiling: iterate over j in blocks
+            for (int j_block = 1; j_block < INNER_END; j_block += BLOCK_SIZE) {
+                int j_next = MIN(n - 1, j_block + BLOCK_SIZE);
+                for (int j = j_block; j < j_next; j++) {
+                    // note that i,j,k in this worker thread are always from 1 to n-1 (inclusive).
+                    // ie. they never touch the boundary.
+                    for (int i = 1; i < n - 1; i++) {
+                        double source_term = args->delta_squared * (*source_ptr++);
+                        middle++;
+                        // REMEMBER: "middle" is already pointing to the right neighbor when the
+                        // relaxation is calulated.
+                        *next_ptr++ = 1.0 / 6.0 *
+                                      ((*top++) + (*bottom++) + (*front++) + (*back++) +
+                                       (*(middle - 2)) + (*middle) - source_term);
+                    }
+                    // Since the boundary thread is handling the boundaries (one column on each
+                    // side), skip these by incrementing by 2
+                    top += 2;
+                    bottom += 2;
+                    front += 2;
+                    back += 2;
+                    middle += 2;
+                    source_ptr += 2;
+                    next_ptr += 2;
                 }
             }
+            // boundary thread is handling one slice on top and bottom (k == 0 and k == n-1), so
+            // skip over these
+            top += 2 * n;
+            bottom += 2 * n;
+            front += 2 * n;
+            back += 2 * n;
+            middle += 2 * n;
+            source_ptr += 2 * n;
+            next_ptr += 2 * n;
         }
+
         double* temp = curr;
         curr = next;
         next = temp;
@@ -81,6 +125,7 @@ void* worker(void* vargs)
 /**
  * Do cell update while checking all boundary conditions
  */
+// TODO do the pointer optimization like in the normal worker task here as well:
 inline void do_cell(
     double* source, double* curr, double* next, double delta_squared, int n, int i, int j, int k)
 {
@@ -326,7 +371,7 @@ int main(int argc, char** argv)
         printf("\n");
     }
 
-/* #define SECOND_SLICE */
+// #define SECOND_SLICE
 #ifdef SECOND_SLICE
     printf("\n");
     for (int x = 0; x < n; ++x) {
