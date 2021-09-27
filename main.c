@@ -11,18 +11,14 @@ static bool debug = false;
 
 #define IDX(n, i, j, k) (((k) * (n) + (j)) * (n) + (i))
 
-/**
- * @brief Solve Poissons equation for a given cube with Neumann boundary
- * conditions on all sides.
- *
- * @param n             The edge length of the cube. n^3 number of elements.
- * @param source        Pointer to the source term cube, a.k.a. forcing
- * function.
- * @param iterations    Number of iterations to solve with.
- * @param threads       Number of threads to use for solving.
- * @param delta         Grid spacing.
- * @return double*      Solution to Poissons equation. Caller must free().
- */
+typedef struct {
+  double *source;
+  double *curr;
+  double *next;
+  int iterations;
+  double delta_squared;
+} thread_args_t;
+
 double *poisson_neumann(int n, double *source, int iterations, int threads,
                         float delta) {
   if (debug) {
