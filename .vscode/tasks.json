@@ -1,0 +1,44 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+        {
+            "label": "Make (with optimizations)",
+            "type": "shell",
+            "command": "make clean all",
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "Make (with with optimization + debug symbols)",
+            "type": "shell",
+            "command": "make clean dbg",
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "Make (with with NO optimization + debug symbols)",
+            "type": "shell",
+            "command": "make clean dbg_no_opt",
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "Show Kcallgrind",
+            "type": "shell",
+            "command": "make clean dbg callgrind",
+            "group": "build",
+        },
+        {
+            "label": "Run test script",
+            "type": "shell",
+            "command": "bash ./test.sh",
+            "group": "build",
+        },
+	]
+}

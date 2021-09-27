@@ -11,24 +11,6 @@
 static bool debug = false;
 
 #define IDX(n, i, j, k) (((k) * (n) + (j)) * (n) + (i))
-/* #define IDX(n, i, j, k) (((i) * (n) + (j)) * (n) + (k)) */
-
-#define BOUNDARY_THREAD
-
-#ifdef BOUNDARY_THREAD
-    // start of iteration when only iterating over non-boundary cells
-    #define INNER_START (1)
-    // end of iteration when only iterating over non-boundary cells
-    #define INNER_END (n - 1)
-    #define LOOKAHEAD(x) 1
-    #define LOOKBEHIND(x) -1
-#else
-    // Not using boundary thread
-    #define INNER_START (0)
-    #define INNER_END (n)
-    #define LOOKAHEAD(x) ((x == n - 1) ? -1 : 1)
-    #define LOOKBEHIND(x) ((x == 0) ? 1 : -1)
-#endif
 
 #define BLOCK_SIZE 8
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -53,6 +35,7 @@ typedef struct {
     double delta_squared;
 } boundary_thread_args_t;
 
+// barrier is used for all threads to wait for eachother between iterations
 pthread_barrier_t barrier;
 
 void* worker(void* vargs)
@@ -63,7 +46,15 @@ void* worker(void* vargs)
     int n = args->n;
 
     // top/bottom: +-j, front/back: +-k
-#define BUF_POINTERS X(top) X(bottom) X(front) X(back) X(middle) X(source_ptr) X(next_ptr)
+#define BUF_POINTERS                                                                               \
+    X(top)                                                                                         \
+    X(bottom)                                                                                      \
+    X(front)                                                                                       \
+    X(back)                                                                                        \
+    X(middle)                                                                                      \
+    X(source_ptr)                                                                                  \
+    X(next_ptr)
+
 #define X(name) double* name;
     BUF_POINTERS
 #undef X
