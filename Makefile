@@ -1,5 +1,5 @@
-CFLAGS = -O3 -Ofast -lpthread -Wall -march=native --std=gnu99
-CFLAGS_NO_OPT = -Og -lpthread -Wall -march=native --std=gnu99
+CFLAGS = -O3 -Ofast -lpthread -Wall -Wno-maybe-uninitialized -march=native --std=gnu99
+CFLAGS_NO_OPT = -Og -lpthread -Wall -Wno-maybe-uninitialized --std=gnu99
 
 TARGET = main
 

@@ -12,27 +12,27 @@ static bool debug = false;
 
 #define IDX(n, i, j, k) (((k) * (n) + (j)) * (n) + (i))
 
-#define BLOCK_SIZE 8
+#define CACHE_LINE_SIZE 64
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
 typedef struct {
-    double* source;
-    double* curr;
-    double* next;
+    float* source;
+    float* curr;
+    float* next;
     int n;
     int k_start;
     int k_end;
     int iterations;
-    double delta_squared;
+    float delta_squared;
 } thread_args_t;
 
 typedef struct {
-    double* source;
-    double* curr;
-    double* next;
+    float* source;
+    float* curr;
+    float* next;
     int n;
     int iterations;
-    double delta_squared;
+    float delta_squared;
 } boundary_thread_args_t;
 
 // barrier is used for all threads to wait for eachother between iterations
@@ -41,8 +41,8 @@ pthread_barrier_t barrier;
 void* worker(void* vargs)
 {
     thread_args_t* args = (thread_args_t*)vargs;
-    double* curr = args->curr;
-    double* next = args->next;
+    float* curr = args->curr;
+    float* next = args->next;
     int n = args->n;
 
     // top/bottom: +-j, front/back: +-k
@@ -55,7 +55,7 @@ void* worker(void* vargs)
     X(source_ptr)                                                                                  \
     X(next_ptr)
 
-#define X(name) double* name;
+#define X(name) float* name;
     BUF_POINTERS
 #undef X
 
@@ -82,26 +82,23 @@ void* worker(void* vargs)
 
         for (int k = args->k_start; k < args->k_end; k++) {
             // loop tiling AKA strip mining: iterate over j in blocks
-            for (int j_block = 1; j_block < n - 1; j_block += BLOCK_SIZE) {
-                int j_next = MIN(n - 1, j_block + BLOCK_SIZE);
-                for (int j = j_block; j < j_next; j++) {
-                    // note that i,j,k in this worker thread are always from 1 to n-1 (inclusive).
-                    // ie. they never touch the boundary.
-                    for (int i = 1; i < n - 1; i++) {
-                        double source_term = args->delta_squared * (*source_ptr++);
-                        middle++;
-                        // REMEMBER: "middle" is already pointing to the right neighbor when the
-                        // relaxation is calulated.
-                        *next_ptr++ = 1.0 / 6.0 *
-                                      ((*top++) + (*bottom++) + (*front++) + (*back++) +
-                                       (*(middle - 2)) + (*middle) - source_term);
-                    }
-                    // Since the boundary thread is handling the boundaries (one column on each
-                    // side), skip these by incrementing by 2
-#define X(name) name += 2;
-                    BUF_POINTERS
-#undef X
+            for (int j = 1; j < n - 1; j++) {
+                // note that i,j,k in this worker thread are always from 1 to n-1 (inclusive).
+                // ie. they never touch the boundary.
+                for (int i = 1; i < n - 1; i++) {
+                    float source_term = args->delta_squared * (*source_ptr++);
+                    middle++;
+                    // REMEMBER: "middle" is already pointing to the right neighbor when the
+                    // relaxation is calulated.
+                    *next_ptr++ = 1.0 / 6.0 *
+                                  ((*top++) + (*bottom++) + (*front++) + (*back++) +
+                                   (*(middle - 2)) + (*middle) - source_term);
                 }
+                // Since the boundary thread is handling the boundaries (one column on each
+                // side), skip these by incrementing by 2
+#define X(name) name += 2;
+                BUF_POINTERS
+#undef X
             }
             // boundary thread is handling one slice on top and bottom (k == 0 and k == n-1), so
             // skip over these
@@ -110,7 +107,7 @@ void* worker(void* vargs)
 #undef X
         }
 
-        double* temp = curr;
+        float* temp = curr;
         curr = next;
         next = temp;
 
@@ -129,8 +126,8 @@ void* worker(void* vargs)
  * Do cell update while checking all boundary conditions
  */
 // TODO do the pointer optimization like in the normal worker task here as well:
-inline void do_cell(
-    double* source, double* curr, double* next, double delta_squared, int n, int i, int j, int k)
+inline void
+do_cell(float* source, float* curr, float* next, float delta_squared, int n, int i, int j, int k)
 {
     int ip = (i == n - 1) ? -1 : 1;
     int in = (i == 0) ? -1 : 1;
@@ -139,7 +136,7 @@ inline void do_cell(
     int kp = (k == n - 1) ? -1 : 1;
     int kn = (k == 0) ? -1 : 1;
 
-    double source_term = delta_squared * source[IDX(n, i, j, k)];
+    float source_term = delta_squared * source[IDX(n, i, j, k)];
     next[IDX(n, i, j, k)] = 1.0 / 6.0 *
                             (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
                              curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
@@ -152,8 +149,8 @@ inline void do_cell(
 void* boundary_worker(void* vargs)
 {
     boundary_thread_args_t* args = (boundary_thread_args_t*)vargs;
-    double* curr = args->curr;
-    double* next = args->next;
+    float* curr = args->curr;
+    float* next = args->next;
     int n = args->n;
 
     for (int iter = 0; iter < args->iterations; iter++) {
@@ -195,7 +192,7 @@ void* boundary_worker(void* vargs)
                 do_cell(args->source, curr, next, args->delta_squared, n, n - 1, j, k);
             }
         }
-        double* temp = curr;
+        float* temp = curr;
         curr = next;
         next = temp;
 
@@ -209,7 +206,7 @@ void* boundary_worker(void* vargs)
     return NULL;
 }
 
-double* poisson_neumann(int n, double* source, int iterations, int num_threads, float delta)
+float* poisson_neumann(int n, float* source, int iterations, int num_threads, float delta)
 {
     if (debug) {
         printf(
@@ -224,9 +221,10 @@ double* poisson_neumann(int n, double* source, int iterations, int num_threads, 
             delta);
     }
 
-    // Allocate some buffers to calculate the solution in
-    double* curr = (double*)calloc(n * n * n, sizeof(double));
-    double* next = (double*)calloc(n * n * n, sizeof(double));
+    float *curr, *next;
+    // Allocate curr and next to be cache aligned
+    posix_memalign((void**)&curr, CACHE_LINE_SIZE, n * n * n * sizeof(float));
+    posix_memalign((void**)&next, CACHE_LINE_SIZE, n * n * n * sizeof(float));
 
     // Ensure we haven't run out of memory
     if (curr == NULL || next == NULL) {
@@ -236,7 +234,7 @@ double* poisson_neumann(int n, double* source, int iterations, int num_threads, 
 
     pthread_t* threads = (pthread_t*)malloc(num_threads * sizeof(pthread_t));
     thread_args_t* thread_args = (thread_args_t*)malloc(num_threads * sizeof(thread_args_t));
-    double delta_squared = delta * delta;
+    float delta_squared = delta * delta;
 
     // Init the boundary thread
     pthread_barrier_init(&barrier, NULL, num_threads + 1);
@@ -283,7 +281,7 @@ double* poisson_neumann(int n, double* source, int iterations, int num_threads, 
     pthread_join(boundary_thread, NULL);
 
     if (iterations % 2 != 0) {
-        double* temp = curr;
+        float* temp = curr;
         curr = next;
         next = temp;
     }
@@ -355,16 +353,22 @@ int main(int argc, char** argv)
     }
 
     // Create a source term with a single point in the centre
-    double* source = (double*)calloc(n * n * n, sizeof(double));
-    if (source == NULL) {
-        fprintf(stderr, "Error: failed to allocated source term (n=%i)\n", n);
-        return EXIT_FAILURE;
-    }
+    float* source;
+    posix_memalign((void**)&source, CACHE_LINE_SIZE, n * n * n * sizeof(float));
+    memset(source, 0, n * n * n * sizeof(float));
 
     source[(n * n * n) / 2] = 1;
-
+#ifdef TIME_RUN
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
+#endif
     // Calculate the resulting field with Neumann conditions
-    double* result = poisson_neumann(n, source, iterations, threads, delta);
+    float* result = poisson_neumann(n, source, iterations, threads, delta);
+#ifdef TIME_RUN
+    gettimeofday(&end, NULL);
+    int elapsed = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec);
+    printf("%d elapsed\n", elapsed);
+#else
 
     // Print out the middle slice of the cube for validation
     for (int x = 0; x < n; ++x) {
@@ -373,6 +377,7 @@ int main(int argc, char** argv)
         }
         printf("\n");
     }
+#endif
 
 // #define SECOND_SLICE
 #ifdef SECOND_SLICE
