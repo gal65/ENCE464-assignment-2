@@ -15,6 +15,10 @@ static bool debug = false;
 #define CACHE_LINE_SIZE 64
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
+#define UNSAFE_ASSERT(x)                                                                           \
+    if (!(x))                                                                                      \
+    __builtin_unreachable()
+
 typedef struct {
     float* source;
     float* curr;
@@ -42,7 +46,7 @@ pthread_barrier_t barrier;
  * Do cell update while checking all boundary conditions
  */
 // TODO do the pointer optimization like in the normal worker task here as well:
-void
+inline void
 do_cell(float* source, float* curr, float* next, float delta_squared, int n, int i, int j, int k)
 {
     int ip = (i == n - 1) ? -1 : 1;
@@ -68,11 +72,18 @@ void* worker(void* vargs)
 
     for (int iter = 0; iter < args->iterations; iter++) {
         for (int k = args->k_start; k < args->k_end; k++) {
+            // Tell the compiler that k is not in boundary
+            UNSAFE_ASSERT(k > 0);
+            UNSAFE_ASSERT(k < n - 1);
             for (int j = 1; j < n - 1; j++) {
-                // note that i,j,k in this worker thread are always from 1 to n-1 (inclusive).
-                // ie. they never touch the boundary.
                 for (int i = 1; i < n - 1; i++) {
-                    do_cell(args->source, curr, next, args->delta_squared, n, i, j, k);
+                    float source_term = args->delta_squared * args->source[IDX(n, i, j, k)];
+                    next[IDX(n, i, j, k)] =
+                        1.0 / 6.0 *
+                        (curr[IDX(n, i + 1, j, k)] + curr[IDX(n, i - 1, j, k)] +
+                         curr[IDX(n, i, j + 1, k)] + curr[IDX(n, i, j - 1, k)] +
+                         curr[IDX(n, i, j, k + 1)] + curr[IDX(n, i, j, k - 1)] - source_term);
+                    // do_cell(args->source, curr, next, args->delta_squared, n, i, j, k);
                 }
             }
         }
@@ -92,7 +103,6 @@ void* worker(void* vargs)
     return NULL;
 }
 
-
 // TODO at large number of threads or large sizes, boundary thread will surpass worker threads in
 // work required. Need to allocate a proportional amount of threads to the boundary so other threads
 // are not stuck waiting. OR: each thread does it's own boundary scan
@@ -104,44 +114,55 @@ void* boundary_worker(void* vargs)
     int n = args->n;
 
     for (int iter = 0; iter < args->iterations; iter++) {
-        // top k-slice
-        for (int j = 0; j < n; j++) {
-            for (int i = 0; i < n; i++) {
-                do_cell(args->source, curr, next, args->delta_squared, n, i, j, 0);
+        for (int b = 0; b < n; b++) {
+            for (int a = 0; a < n; a++) {
+                do_cell(args->source, curr, next, args->delta_squared, n, a, b, 0);
+                do_cell(args->source, curr, next, args->delta_squared, n, a, b, n - 1);
+                do_cell(args->source, curr, next, args->delta_squared, n, a, 0, b);
+                do_cell(args->source, curr, next, args->delta_squared, n, a, n - 1, b);
+                do_cell(args->source, curr, next, args->delta_squared, n, 0, a, b);
+                do_cell(args->source, curr, next, args->delta_squared, n, n - 1, a, b);
             }
         }
-        // bottom k-slice
-        for (int j = 0; j < n; j++) {
-            for (int i = 0; i < n; i++) {
-                do_cell(args->source, curr, next, args->delta_squared, n, i, j, n - 1);
-            }
-        }
+        // // top k-slice
+        // for (int j = 0; j < n; j++) {
+        //     for (int i = 0; i < n; i++) {
+        //         do_cell(args->source, curr, next, args->delta_squared, n, i, j, 0);
+        //     }
+        // }
+        // // bottom k-slice
+        // for (int j = 0; j < n; j++) {
+        //     for (int i = 0; i < n; i++) {
+        //         do_cell(args->source, curr, next, args->delta_squared, n, i, j, n - 1);
+        //     }
+        // }
 
-        // left j-slice
-        for (int k = 1; k < n - 1; k++) {
-            for (int i = 0; i < n; i++) {
-                do_cell(args->source, curr, next, args->delta_squared, n, i, 0, k);
-            }
-        }
-        // right j-slice
-        for (int k = 1; k < n - 1; k++) {
-            for (int i = 0; i < n; i++) {
-                do_cell(args->source, curr, next, args->delta_squared, n, i, n - 1, k);
-            }
-        }
+        // // left j-slice
+        // for (int k = 1; k < n - 1; k++) {
+        //     for (int i = 0; i < n; i++) {
+        //         do_cell(args->source, curr, next, args->delta_squared, n, i, 0, k);
+        //     }
+        // }
+        // // right j-slice
+        // for (int k = 1; k < n - 1; k++) {
+        //     for (int i = 0; i < n; i++) {
+        //         do_cell(args->source, curr, next, args->delta_squared, n, i, n - 1, k);
+        //     }
+        // }
 
-        // front i-slice
-        for (int k = 1; k < n - 1; k++) {
-            for (int j = 1; j < n - 1; j++) {
-                do_cell(args->source, curr, next, args->delta_squared, n, 0, j, k);
-            }
-        }
-        // back i-slice
-        for (int k = 1; k < n - 1; k++) {
-            for (int j = 1; j < n - 1; j++) {
-                do_cell(args->source, curr, next, args->delta_squared, n, n - 1, j, k);
-            }
-        }
+        // // front i-slice
+        // for (int k = 1; k < n - 1; k++) {
+        //     for (int j = 1; j < n - 1; j++) {
+        //         do_cell(args->source, curr, next, args->delta_squared, n, 0, j, k);
+        //     }
+        // }
+        // // back i-slice
+        // for (int k = 1; k < n - 1; k++) {
+        //     for (int j = 1; j < n - 1; j++) {
+        //         do_cell(args->source, curr, next, args->delta_squared, n, n - 1, j, k);
+        //     }
+        // }
+
         float* temp = curr;
         curr = next;
         next = temp;
@@ -308,7 +329,7 @@ int main(int argc, char** argv)
     memset(source, 0, n * n * n * sizeof(float));
 
     source[(n * n * n) / 2] = 1;
-#define TIME_RUN
+// #define TIME_RUN
 #ifdef TIME_RUN
     struct timeval start, end;
     gettimeofday(&start, NULL);

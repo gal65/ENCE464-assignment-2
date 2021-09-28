@@ -47,7 +47,49 @@ posix_memalign((void**)&next, CACHE_LINE_SIZE, n * n * n * sizeof(float));
 ```
 
 ## Calculating boundary conditions
-Originally, there were two versions of the calculations: one with boundary
-check and one without. It was found that the boundary check branches were
-getting optimized out anyway, so a single function was used. This gets inlined
-anyway so its nbd.
+Inside the main loop, we can check for boundaries to re-use code from the boundary worker (DRY). Or we can special case it. special casing is only a tiny bit better.
+
+### Check boundaries even though unnecessary
+- cycle est = 2.176T
+### Dont check boundaries
+- cycle est = 2.177T (better ish?)
+
+## Non-overlapping boundary condition
+### Impl 1
+- do multiple for loops over surface of cube, such that no loops overlap and
+  calculate the same value twice
+- instruction fetches: 412 675 326
+- L1 cache misses: 8 081 252
+- cycle est = 524.9M
+
+### Impl 2
+- dont care about calculating the same boundary condition twice, just loop over
+  full faces of the cube, even if they overlap at the corners
+- instruction fetches 694 405 338
+- L1 cache misses: 6 324 050
+- cycle est = 434.8M
+
+Verdict: "naive" approach is once again better
+
+## Pre-fetching cache lines
+use `__builtin_prefetch` in inner loop of worker thread to load the next 64
+bytes into cache before they are needed.
+
+Decreased performance: it made the vectorization code (SIMD) more complicated,
+and therefore slower. The CPU is better at prefetching than we are
+
+## Marking do_cell as inline
+Only takes effect in boundary worker, as it is always inlines in `worker`.
+
+Effects in boundary worker:
+### with inline
+- instr fetch = 163M
+- L1 miss = 6 305 000
+- L3 miss = 2 005 873
+- cycle estimation = 426M
+
+### without inline
+- instr fetch = 122M
+- L1 miss = 6 323 908
+- L3 miss = 2 023 103
+- cycle estimation = 659M

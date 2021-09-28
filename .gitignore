@@ -1,4 +1,6 @@
 main
+main_a
+main_b
 *.out
 cachegrind.out.*
 callgrind.out.*
