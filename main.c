@@ -38,6 +38,27 @@ typedef struct {
 // barrier is used for all threads to wait for eachother between iterations
 pthread_barrier_t barrier;
 
+/**
+ * Do cell update while checking all boundary conditions
+ */
+// TODO do the pointer optimization like in the normal worker task here as well:
+void
+do_cell(float* source, float* curr, float* next, float delta_squared, int n, int i, int j, int k)
+{
+    int ip = (i == n - 1) ? -1 : 1;
+    int in = (i == 0) ? -1 : 1;
+    int jp = (j == n - 1) ? -1 : 1;
+    int jn = (j == 0) ? -1 : 1;
+    int kp = (k == n - 1) ? -1 : 1;
+    int kn = (k == 0) ? -1 : 1;
+
+    float source_term = delta_squared * source[IDX(n, i, j, k)];
+    next[IDX(n, i, j, k)] = 1.0 / 6.0 *
+                            (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
+                             curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
+                             curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
+}
+
 void* worker(void* vargs)
 {
     thread_args_t* args = (thread_args_t*)vargs;
@@ -45,66 +66,15 @@ void* worker(void* vargs)
     float* next = args->next;
     int n = args->n;
 
-    // top/bottom: +-j, front/back: +-k
-#define BUF_POINTERS                                                                               \
-    X(top)                                                                                         \
-    X(bottom)                                                                                      \
-    X(front)                                                                                       \
-    X(back)                                                                                        \
-    X(middle)                                                                                      \
-    X(source_ptr)                                                                                  \
-    X(next_ptr)
-
-#define X(name) float* name;
-    BUF_POINTERS
-#undef X
-
     for (int iter = 0; iter < args->iterations; iter++) {
-
-        // reset pointers to their staring position
-
-        // middle, source_pts, next_ptr all start at the same location (in different buffers).
-        // This is at coordinate (1, 1, k_start), ie the origin for this thread's slice.
-        // Note the inset of one (ie. not starting at 0), because the boundary is not handled by
-        // this worker.
-        middle = &curr[IDX(n, 1, 1, args->k_start)];
-        source_ptr = &args->source[IDX(n, 1, 1, args->k_start)];
-        next_ptr = &next[IDX(n, 1, 1, args->k_start)];
-
-        // top and bottom start above and below (j=0, 2) the middle pointer
-        top = &curr[IDX(n, 1, 0, args->k_start)];
-        bottom = &curr[IDX(n, 1, 2, args->k_start)];
-
-        // front and back start into and out of the page (k = start-1, start+1) from the middle
-        // pointer
-        front = &curr[IDX(n, 1, 1, args->k_start - 1)];
-        back = &curr[IDX(n, 1, 1, args->k_start + 1)];
-
         for (int k = args->k_start; k < args->k_end; k++) {
-            // loop tiling AKA strip mining: iterate over j in blocks
             for (int j = 1; j < n - 1; j++) {
                 // note that i,j,k in this worker thread are always from 1 to n-1 (inclusive).
                 // ie. they never touch the boundary.
                 for (int i = 1; i < n - 1; i++) {
-                    float source_term = args->delta_squared * (*source_ptr++);
-                    middle++;
-                    // REMEMBER: "middle" is already pointing to the right neighbor when the
-                    // relaxation is calulated.
-                    *next_ptr++ = 1.0 / 6.0 *
-                                  ((*top++) + (*bottom++) + (*front++) + (*back++) +
-                                   (*(middle - 2)) + (*middle) - source_term);
+                    do_cell(args->source, curr, next, args->delta_squared, n, i, j, k);
                 }
-                // Since the boundary thread is handling the boundaries (one column on each
-                // side), skip these by incrementing by 2
-#define X(name) name += 2;
-                BUF_POINTERS
-#undef X
             }
-            // boundary thread is handling one slice on top and bottom (k == 0 and k == n-1), so
-            // skip over these
-#define X(name) name += 2 * n;
-            BUF_POINTERS
-#undef X
         }
 
         float* temp = curr;
@@ -122,26 +92,6 @@ void* worker(void* vargs)
     return NULL;
 }
 
-/**
- * Do cell update while checking all boundary conditions
- */
-// TODO do the pointer optimization like in the normal worker task here as well:
-inline void
-do_cell(float* source, float* curr, float* next, float delta_squared, int n, int i, int j, int k)
-{
-    int ip = (i == n - 1) ? -1 : 1;
-    int in = (i == 0) ? -1 : 1;
-    int jp = (j == n - 1) ? -1 : 1;
-    int jn = (j == 0) ? -1 : 1;
-    int kp = (k == n - 1) ? -1 : 1;
-    int kn = (k == 0) ? -1 : 1;
-
-    float source_term = delta_squared * source[IDX(n, i, j, k)];
-    next[IDX(n, i, j, k)] = 1.0 / 6.0 *
-                            (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
-                             curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
-                             curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
-}
 
 // TODO at large number of threads or large sizes, boundary thread will surpass worker threads in
 // work required. Need to allocate a proportional amount of threads to the boundary so other threads
@@ -358,6 +308,7 @@ int main(int argc, char** argv)
     memset(source, 0, n * n * n * sizeof(float));
 
     source[(n * n * n) / 2] = 1;
+#define TIME_RUN
 #ifdef TIME_RUN
     struct timeval start, end;
     gettimeofday(&start, NULL);
