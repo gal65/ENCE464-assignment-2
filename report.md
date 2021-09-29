@@ -102,3 +102,9 @@ Effects in boundary worker:
 - AB test makefile
 - preprocessor args
 - loop tiling and why it doesn't work
+- profile-guided-optimization
+- -falign-labels -falign-functions
+- Turning on optimizations makes miss rate higher
+  - miss rate is a proportion of total references
+  - At high optimization there is the same amount of misses but less total
+    references, so higher miss rate

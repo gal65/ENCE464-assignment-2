@@ -15,7 +15,9 @@ static bool debug = false;
 #define CACHE_LINE_SIZE 64
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
+// Define implementation options:
 #define PTR_OPTIMIZATION
+#define SINGLE_BOUND_LOOP
 
 #define UNSAFE_ASSERT(x)                                                                           \
     if (!(x))                                                                                      \
@@ -43,27 +45,6 @@ typedef struct {
 
 // barrier is used for all threads to wait for eachother between iterations
 pthread_barrier_t barrier;
-
-/**
- * Do cell update while checking all boundary conditions
- */
-// TODO do the pointer optimization like in the normal worker task here as well
-inline void
-do_cell(float* source, float* curr, float* next, float delta_squared, int n, int i, int j, int k)
-{
-    int ip = (i == n - 1) ? -1 : 1;
-    int in = (i == 0) ? -1 : 1;
-    int jp = (j == n - 1) ? -1 : 1;
-    int jn = (j == 0) ? -1 : 1;
-    int kp = (k == n - 1) ? -1 : 1;
-    int kn = (k == 0) ? -1 : 1;
-
-    float source_term = delta_squared * source[IDX(n, i, j, k)];
-    next[IDX(n, i, j, k)] = 1.0 / 6.0 *
-                            (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
-                             curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
-                             curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
-}
 
 void* worker(void* vargs)
 {
@@ -155,6 +136,27 @@ void* worker(void* vargs)
     return NULL;
 }
 
+/**
+ * Do cell update while checking all boundary conditions
+ */
+// TODO do the pointer optimization like in the normal worker task here as well
+inline void
+do_cell(float* source, float* curr, float* next, float delta_squared, int n, int i, int j, int k)
+{
+    int ip = (i == n - 1) ? -1 : 1;
+    int in = (i == 0) ? -1 : 1;
+    int jp = (j == n - 1) ? -1 : 1;
+    int jn = (j == 0) ? -1 : 1;
+    int kp = (k == n - 1) ? -1 : 1;
+    int kn = (k == 0) ? -1 : 1;
+
+    float source_term = delta_squared * source[IDX(n, i, j, k)];
+    next[IDX(n, i, j, k)] = 1.0 / 6.0 *
+                            (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
+                             curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
+                             curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
+}
+
 // TODO at large number of threads or large sizes, boundary thread will surpass worker threads in
 // work required. Need to allocate a proportional amount of threads to the boundary so other threads
 // are not stuck waiting. OR: each thread does it's own boundary scan
@@ -166,6 +168,7 @@ void* boundary_worker(void* vargs)
     int n = args->n;
 
     for (int iter = 0; iter < args->iterations; iter++) {
+#ifdef SINGLE_BOUND_LOOP
         for (int b = 0; b < n; b++) {
             for (int a = 0; a < n; a++) {
                 do_cell(args->source, curr, next, args->delta_squared, n, a, b, 0);
@@ -176,44 +179,47 @@ void* boundary_worker(void* vargs)
                 do_cell(args->source, curr, next, args->delta_squared, n, n - 1, a, b);
             }
         }
-        // // top k-slice
-        // for (int j = 0; j < n; j++) {
-        //     for (int i = 0; i < n; i++) {
-        //         do_cell(args->source, curr, next, args->delta_squared, n, i, j, 0);
-        //     }
-        // }
-        // // bottom k-slice
-        // for (int j = 0; j < n; j++) {
-        //     for (int i = 0; i < n; i++) {
-        //         do_cell(args->source, curr, next, args->delta_squared, n, i, j, n - 1);
-        //     }
-        // }
+#endif
+#ifdef MANY_BOUND_LOOP
+        // top k-slice
+        for (int j = 0; j < n; j++) {
+            for (int i = 0; i < n; i++) {
+                do_cell(args->source, curr, next, args->delta_squared, n, i, j, 0);
+            }
+        }
+        // bottom k-slice
+        for (int j = 0; j < n; j++) {
+            for (int i = 0; i < n; i++) {
+                do_cell(args->source, curr, next, args->delta_squared, n, i, j, n - 1);
+            }
+        }
 
-        // // left j-slice
-        // for (int k = 1; k < n - 1; k++) {
-        //     for (int i = 0; i < n; i++) {
-        //         do_cell(args->source, curr, next, args->delta_squared, n, i, 0, k);
-        //     }
-        // }
-        // // right j-slice
-        // for (int k = 1; k < n - 1; k++) {
-        //     for (int i = 0; i < n; i++) {
-        //         do_cell(args->source, curr, next, args->delta_squared, n, i, n - 1, k);
-        //     }
-        // }
+        // left j-slice
+        for (int k = 1; k < n - 1; k++) {
+            for (int i = 0; i < n; i++) {
+                do_cell(args->source, curr, next, args->delta_squared, n, i, 0, k);
+            }
+        }
+        // right j-slice
+        for (int k = 1; k < n - 1; k++) {
+            for (int i = 0; i < n; i++) {
+                do_cell(args->source, curr, next, args->delta_squared, n, i, n - 1, k);
+            }
+        }
 
-        // // front i-slice
-        // for (int k = 1; k < n - 1; k++) {
-        //     for (int j = 1; j < n - 1; j++) {
-        //         do_cell(args->source, curr, next, args->delta_squared, n, 0, j, k);
-        //     }
-        // }
-        // // back i-slice
-        // for (int k = 1; k < n - 1; k++) {
-        //     for (int j = 1; j < n - 1; j++) {
-        //         do_cell(args->source, curr, next, args->delta_squared, n, n - 1, j, k);
-        //     }
-        // }
+        // front i-slice
+        for (int k = 1; k < n - 1; k++) {
+            for (int j = 1; j < n - 1; j++) {
+                do_cell(args->source, curr, next, args->delta_squared, n, 0, j, k);
+            }
+        }
+        // back i-slice
+        for (int k = 1; k < n - 1; k++) {
+            for (int j = 1; j < n - 1; j++) {
+                do_cell(args->source, curr, next, args->delta_squared, n, n - 1, j, k);
+            }
+        }
+#endif
 
         float* temp = curr;
         curr = next;
