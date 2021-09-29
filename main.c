@@ -15,6 +15,8 @@ static bool debug = false;
 #define CACHE_LINE_SIZE 64
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
+#define PTR_OPTIMIZATION
+
 #define UNSAFE_ASSERT(x)                                                                           \
     if (!(x))                                                                                      \
     __builtin_unreachable()
@@ -45,7 +47,7 @@ pthread_barrier_t barrier;
 /**
  * Do cell update while checking all boundary conditions
  */
-// TODO do the pointer optimization like in the normal worker task here as well:
+// TODO do the pointer optimization like in the normal worker task here as well
 inline void
 do_cell(float* source, float* curr, float* next, float delta_squared, int n, int i, int j, int k)
 {
@@ -69,23 +71,73 @@ void* worker(void* vargs)
     float* curr = args->curr;
     float* next = args->next;
     int n = args->n;
+#ifdef PTR_OPTIMIZATION
+    #define BUF_POINTERS                                                                           \
+        X(top)                                                                                     \
+        X(bottom)                                                                                  \
+        X(front)                                                                                   \
+        X(back)                                                                                    \
+        X(middle)                                                                                  \
+        X(source_ptr)                                                                              \
+        X(next_ptr)
+
+    #define X(name) float* name;
+    BUF_POINTERS
+    #undef X
+#endif
 
     for (int iter = 0; iter < args->iterations; iter++) {
+#ifdef PTR_OPTIMIZATION
+        middle = &curr[IDX(n, 1, 1, args->k_start)];
+        source_ptr = &args->source[IDX(n, 1, 1, args->k_start)];
+        next_ptr = &next[IDX(n, 1, 1, args->k_start)];
+
+        // top and bottom start above and below (j=0, 2) the middle pointer
+        top = &curr[IDX(n, 1, 0, args->k_start)];
+        bottom = &curr[IDX(n, 1, 2, args->k_start)];
+
+        // front and back start into and out of the page (k = start-1, start+1) from the middle
+        // pointer
+        front = &curr[IDX(n, 1, 1, args->k_start - 1)];
+        back = &curr[IDX(n, 1, 1, args->k_start + 1)];
+#endif
         for (int k = args->k_start; k < args->k_end; k++) {
             // Tell the compiler that k is not in boundary
             UNSAFE_ASSERT(k > 0);
             UNSAFE_ASSERT(k < n - 1);
             for (int j = 1; j < n - 1; j++) {
                 for (int i = 1; i < n - 1; i++) {
+#ifdef PTR_OPTIMIZATION
+                    float source_term = args->delta_squared * (*source_ptr++);
+                    middle++;
+                    *next_ptr++ = 1.0 / 6.0 *
+                                  ((*top++) + (*bottom++) + (*front++) + (*back++) +
+                                   (*(middle - 2)) + (*middle) - source_term);
+
+#endif
+#ifdef INDEXING
                     float source_term = args->delta_squared * args->source[IDX(n, i, j, k)];
                     next[IDX(n, i, j, k)] =
                         1.0 / 6.0 *
                         (curr[IDX(n, i + 1, j, k)] + curr[IDX(n, i - 1, j, k)] +
                          curr[IDX(n, i, j + 1, k)] + curr[IDX(n, i, j - 1, k)] +
                          curr[IDX(n, i, j, k + 1)] + curr[IDX(n, i, j, k - 1)] - source_term);
+#endif
                     // do_cell(args->source, curr, next, args->delta_squared, n, i, j, k);
                 }
+
+#ifdef PTR_OPTIMIZATION
+    #define X(name) name += 2;
+                BUF_POINTERS
+    #undef X
+#endif
             }
+
+#ifdef PTR_OPTIMIZATION
+    #define X(name) name += 2 * n;
+            BUF_POINTERS
+    #undef X
+#endif
         }
 
         float* temp = curr;

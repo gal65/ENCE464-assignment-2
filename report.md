@@ -3,6 +3,7 @@
 - This is expected since cache lines are 64 bytes, and floats are 4 bytes
 - 16 floats can fit in cache line, so 1/16th of the time (6.25%) a new line
   will have to be loaded.
+- This assumes only one cache line is used per float being read in the inner loop. This is the case without optimizations turned on, probably because function arguments (worker_args_t*) which are loaded from stack into cache.
 
 ## Pointer arith optimization:
 - Tried with pointer arithmetic, where each pointer increments (++) after the
@@ -31,9 +32,11 @@ for (int i = 1; i < n - 1; i++) {
 }
 ```
 
-Both produce identical ASM output, so the more readable form was kept. Compiler
-knew that the indices were incrementing each loop and changed the indexing into
-load/increment.
+On average:
+### Ptr arith
+- cycles: 2.19T
+## indexing:
+- cycles: 2.25T
 
 ## Aligning to cache lines:
 - malloc/calloc is not algined to cache line (64 bytes) by default. This could
@@ -93,3 +96,9 @@ Effects in boundary worker:
 - L1 miss = 6 323 908
 - L3 miss = 2 023 103
 - cycle estimation = 659M
+
+## also cover in report
+- compiler flags
+- AB test makefile
+- preprocessor args
+- loop tiling and why it doesn't work

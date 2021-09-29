@@ -1,6 +1,6 @@
 #!/usr/bin/sh
 
-executable="./main"
+executable="${1:-./main}"
 status=0
 
 if $executable -n 7 -i 300  | cmp reference/7.txt; then
