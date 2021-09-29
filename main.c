@@ -13,15 +13,14 @@ static bool debug = false;
 #define IDX(n, i, j, k) (((k) * (n) + (j)) * (n) + (i))
 
 #define CACHE_LINE_SIZE 64
-#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
 // Define implementation options:
 #define PTR_OPTIMIZATION
 #define SINGLE_BOUNDARY_LOOP
 #define CACHE_ALIGN_BUFFERS
 
-#define UNSAFE_ASSERT(x)                                                                           \
-    if (!(x))                                                                                      \
+#define UNSAFE_ASSERT(x) \
+    if (!(x))            \
     __builtin_unreachable()
 
 typedef struct {
@@ -53,14 +52,15 @@ void* worker(void* vargs)
     float* curr = args->curr;
     float* next = args->next;
     int n = args->n;
+    float delta_squared = args->delta_squared;
 #ifdef PTR_OPTIMIZATION
-    #define BUF_POINTERS                                                                           \
-        X(top)                                                                                     \
-        X(bottom)                                                                                  \
-        X(front)                                                                                   \
-        X(back)                                                                                    \
-        X(middle)                                                                                  \
-        X(source_ptr)                                                                              \
+    #define BUF_POINTERS \
+        X(top)           \
+        X(bottom)        \
+        X(front)         \
+        X(back)          \
+        X(middle)        \
+        X(source_ptr)    \
         X(next_ptr)
 
     #define X(name) float* name;
@@ -90,7 +90,7 @@ void* worker(void* vargs)
             for (int j = 1; j < n - 1; j++) {
                 for (int i = 1; i < n - 1; i++) {
 #ifdef PTR_OPTIMIZATION
-                    float source_term = args->delta_squared * (*source_ptr++);
+                    float source_term = delta_squared * (*source_ptr++);
                     middle++;
                     *next_ptr++ = 1.0 / 6.0 *
                                   ((*top++) + (*bottom++) + (*front++) + (*back++) +
@@ -98,7 +98,7 @@ void* worker(void* vargs)
 
 #endif
 #ifdef INDEXING
-                    float source_term = args->delta_squared * args->source[IDX(n, i, j, k)];
+                    float source_term = delta_squared * args->source[IDX(n, i, j, k)];
                     next[IDX(n, i, j, k)] =
                         1.0 / 6.0 *
                         (curr[IDX(n, i + 1, j, k)] + curr[IDX(n, i - 1, j, k)] +
@@ -180,8 +180,7 @@ void* boundary_worker(void* vargs)
                 do_cell(args->source, curr, next, args->delta_squared, n, n - 1, a, b);
             }
         }
-#endif
-#ifdef MANY_BOUND_LOOP
+#else
         // top k-slice
         for (int j = 0; j < n; j++) {
             for (int i = 0; i < n; i++) {
@@ -400,15 +399,12 @@ int main(int argc, char** argv)
 #ifdef TIME_RUN
     struct timeval start, end;
     gettimeofday(&start, NULL);
-#endif
-    // Calculate the resulting field with Neumann conditions
     float* result = poisson_neumann(n, source, iterations, threads, delta);
-#ifdef TIME_RUN
     gettimeofday(&end, NULL);
     int elapsed = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec);
     printf("%d elapsed\n", elapsed);
 #else
-
+    float* result = poisson_neumann(n, source, iterations, threads, delta);
     // Print out the middle slice of the cube for validation
     for (int x = 0; x < n; ++x) {
         for (int y = 0; y < n; ++y) {

@@ -100,7 +100,7 @@ Effects in boundary worker:
 ## also cover in report
 - compiler flags
 - AB test makefile
-- preprocessor args
+  - preprocessor args
 - loop tiling and why it doesn't work
 - profile-guided-optimization
 - -falign-labels -falign-functions
@@ -108,3 +108,4 @@ Effects in boundary worker:
   - miss rate is a proportion of total references
   - At high optimization there is the same amount of misses but less total
     references, so higher miss rate
+- pthread barrier

@@ -6,6 +6,7 @@ AlignAfterOpenBracket: AlwaysBreak
 BinPackArguments: false
 AllowAllArgumentsOnNextLine: false
 IndentPPDirectives: BeforeHash
+AlignEscapedNewlines: Left
 
 # Braces on the same line, except for functions
 BreakBeforeBraces: Linux
