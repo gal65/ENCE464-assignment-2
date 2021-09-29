@@ -72,7 +72,7 @@ build_a:
 build_b: 
 	gcc $(CFLAGS) -g -DB $(TARGET).c -o $(B_TARGET)
 
-checkbuild_a: build_a
+checkbuild_a:
 	gcc $(CFLAGS) -g -DA  $(TARGET).c -o $(A_TARGET)
 	valgrind --tool=callgrind \
 		--cache-sim=yes \
@@ -82,7 +82,7 @@ checkbuild_a: build_a
 		./$(A_TARGET) $(TEST_ARGS)
 	kcachegrind ./callgrind.out.a_latest
 
-checkbuild_b: build_b
+checkbuild_b:
 	gcc $(CFLAGS) -g -DB $(TARGET).c -o $(B_TARGET)
 	valgrind --tool=callgrind \
 		--cache-sim=yes \

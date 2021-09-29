@@ -17,7 +17,8 @@ static bool debug = false;
 
 // Define implementation options:
 #define PTR_OPTIMIZATION
-#define SINGLE_BOUND_LOOP
+#define SINGLE_BOUNDARY_LOOP
+#define CACHE_ALIGN_BUFFERS
 
 #define UNSAFE_ASSERT(x)                                                                           \
     if (!(x))                                                                                      \
@@ -168,7 +169,7 @@ void* boundary_worker(void* vargs)
     int n = args->n;
 
     for (int iter = 0; iter < args->iterations; iter++) {
-#ifdef SINGLE_BOUND_LOOP
+#ifdef SINGLE_BOUNDARY_LOOP
         for (int b = 0; b < n; b++) {
             for (int a = 0; a < n; a++) {
                 do_cell(args->source, curr, next, args->delta_squared, n, a, b, 0);
@@ -250,10 +251,15 @@ float* poisson_neumann(int n, float* source, int iterations, int num_threads, fl
             delta);
     }
 
+#ifdef CACHE_ALIGN_BUFFERS
     float *curr, *next;
     // Allocate curr and next to be cache aligned
     posix_memalign((void**)&curr, CACHE_LINE_SIZE, n * n * n * sizeof(float));
     posix_memalign((void**)&next, CACHE_LINE_SIZE, n * n * n * sizeof(float));
+#else
+    float* curr = (float*)calloc(n * n * n, sizeof(float));
+    float* next = (float*)calloc(n * n * n, sizeof(float));
+#endif
 
     // Ensure we haven't run out of memory
     if (curr == NULL || next == NULL) {
@@ -381,10 +387,13 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    // Create a source term with a single point in the centre
+#ifdef CACHE_ALIGN_BUFFERS
     float* source;
     posix_memalign((void**)&source, CACHE_LINE_SIZE, n * n * n * sizeof(float));
     memset(source, 0, n * n * n * sizeof(float));
+#else
+    float* source = (float*)calloc(n * n * n, sizeof(float));
+#endif
 
     source[(n * n * n) / 2] = 1;
 // #define TIME_RUN
