@@ -78,8 +78,11 @@ Verdict: "naive" approach is once again better
 use `__builtin_prefetch` in inner loop of worker thread to load the next 64
 bytes into cache before they are needed.
 
-Decreased performance: it made the vectorization code (SIMD) more complicated,
-and therefore slower. The CPU is better at prefetching than we are
+Made cachegrind show less estimated cycles, but actually decreased performance
+on actual CPU. The hardware prefetcher is good enough that the inserterd
+`PREFETCH` instructions slowed down execution. They were not useful because
+hardware prefetcher had already inferred which cache lines would be used and
+prefetched them.
 
 ## Marking do_cell as inline
 Only takes effect in boundary worker, as it is always inlines in `worker`.
@@ -109,3 +112,91 @@ Effects in boundary worker:
   - At high optimization there is the same amount of misses but less total
     references, so higher miss rate
 - pthread barrier
+
+## Clang vs GCC
+- non statistically significant difference
+- both compile down to
+  - `vmovups` move to SIMD register (8x packed single float)
+  - `vfnmaddps` fused negative multiply add
+    - for `- delta_sq * source`
+  - 5x `vaddps`
+  
+## One sixth
+When implementing 1/6 times result, using `1.0 / 6.0` results in a DOUBLE
+multiplication, rather than float, even though all types are specified as
+float:
+
+```
+	vcvtss2sd %xmm0,%xmm0,%xmm0
+	vmulsd %xmm5,%xmm0,%xmm0
+	vcvtsd2ss %xmm0,%xmm0,%xmm0
+```
+- convert to double (vcvtss2sd = vectorized convert scalar single to scalar
+  double)
+- do multiplication
+- convert back to float
+
+Instead, use `1.0f / 6.0f`, which results in simpler ASM without conversion:
+```
+	vmulps %ymm2,%ymm0,%ymm0
+```
+- vectorized multiply packed singles
+
+maybe GCC refuses to optimize 1.0/6.0 down to floats because the result would be slightly different?
+
+## SIMD
+`-march=native`
+
+- in loop, loop over in in blocks of 8 (ymm packed single)
+``` assembly
+  # Move into simd reg
+	vmovups (%r15,%rdx,1),%ymm1
+
+  # add to simd reg [r10 + 1*rdx]
+	vaddps (%r10,%rdx,1),%ymm1,%ymm0
+
+	vmovups (%r9,%rdx,1),%ymm1
+	vaddps (%rcx,%rdx,1),%ymm1,%ymm1
+	vaddps %ymm1,%ymm0,%ymm0
+	vmovups 0x4(%rax,%rdx,1),%ymm1
+	vaddps -0x4(%rax,%rdx,1),%ymm1,%ymm1
+	vaddps %ymm1,%ymm0,%ymm0
+  
+  # Fused negative multiply add:
+  # ymm0 - ymm3 * [r14 + 1*rdx] --> ymm0
+  # from "- delta_sq * source"
+	vfnmadd231ps (%r14,%rdx,1),%ymm3,%ymm0
+	vmulps %ymm2,%ymm0,%ymm0
+	vmovups %ymm0,(%r12,%rdx,1)
+```
+- perform algo on 8 floats at once
+- to clean up the extras, do the extras in block of 4 (xmm packed single) and 3 blocks of one (xmm scalar single)
+
+block of 4:
+```assembly
+	vmovups (%r10,%rdx,4),%xmm1
+	vaddps (%r15,%rdx,4),%xmm1,%xmm0
+	vmovups (%rcx,%rdx,4),%xmm1
+	vaddps (%r9,%rdx,4),%xmm1,%xmm1
+	vaddps %xmm1,%xmm0,%xmm0
+	vmovups -0x4(%rax,%r8,1),%xmm1
+	vaddps 0x4(%rax,%r8,1),%xmm1,%xmm1
+	vaddps %xmm1,%xmm0,%xmm0
+	vfnmadd231ps (%r14,%rdx,4),%xmm6,%xmm0
+	vmulps %xmm7,%xmm0,%xmm0
+	vmovups %xmm0,(%r12,%r8,1)
+```
+single:
+```assembly
+	vmovss 0x0(%r13),%xmm0
+	vmovss (%r11),%xmm1
+	vaddss (%rdi),%xmm0,%xmm0
+	vaddss (%rdx),%xmm1,%xmm1
+	vaddss %xmm1,%xmm0,%xmm0
+	vmovss -0x4(%rsi),%xmm1
+	vaddss 0x4(%rsi),%xmm1,%xmm1
+	vfnmadd231ss (%r8),%xmm4,%xmm1
+	vaddss %xmm1,%xmm0,%xmm0
+	vmulss %xmm5,%xmm0,%xmm0
+	vmovss %xmm0,(%r8)
+```

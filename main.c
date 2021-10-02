@@ -19,28 +19,35 @@ static bool debug = false;
 #define SINGLE_BOUNDARY_LOOP
 #define CACHE_ALIGN_BUFFERS
 
+#ifdef A
+typedef float cell_t;
+#endif
+#ifdef B
+typedef double cell_t;
+#endif
+
 #define UNSAFE_ASSERT(x) \
     if (!(x))            \
     __builtin_unreachable()
 
 typedef struct {
-    float* source;
-    float* curr;
-    float* next;
+    cell_t* source;
+    cell_t* curr;
+    cell_t* next;
     int n;
     int k_start;
     int k_end;
     int iterations;
-    float delta_squared;
+    cell_t delta_squared;
 } thread_args_t;
 
 typedef struct {
-    float* source;
-    float* curr;
-    float* next;
+    cell_t* source;
+    cell_t* curr;
+    cell_t* next;
     int n;
     int iterations;
-    float delta_squared;
+    cell_t delta_squared;
 } boundary_thread_args_t;
 
 // barrier is used for all threads to wait for eachother between iterations
@@ -49,10 +56,11 @@ pthread_barrier_t barrier;
 void* worker(void* vargs)
 {
     thread_args_t* args = (thread_args_t*)vargs;
-    float* curr = args->curr;
-    float* next = args->next;
+    cell_t* curr = args->curr;
+    cell_t* next = args->next;
     int n = args->n;
-    float delta_squared = args->delta_squared;
+    const cell_t delta_squared = args->delta_squared;
+    const cell_t one_sixth = 1.0 / 6.0;
 #ifdef PTR_OPTIMIZATION
     #define BUF_POINTERS \
         X(top)           \
@@ -63,7 +71,7 @@ void* worker(void* vargs)
         X(source_ptr)    \
         X(next_ptr)
 
-    #define X(name) float* name;
+    #define X(name) cell_t* name;
     BUF_POINTERS
     #undef X
 #endif
@@ -90,15 +98,14 @@ void* worker(void* vargs)
             for (int j = 1; j < n - 1; j++) {
                 for (int i = 1; i < n - 1; i++) {
 #ifdef PTR_OPTIMIZATION
-                    float source_term = delta_squared * (*source_ptr++);
+                    cell_t source_term = delta_squared * (*source_ptr++);
                     middle++;
-                    *next_ptr++ = 1.0 / 6.0 *
-                                  ((*top++) + (*bottom++) + (*front++) + (*back++) +
-                                   (*(middle - 2)) + (*middle) - source_term);
+                    *next_ptr++ = one_sixth * ((*top++) + (*bottom++) + (*front++) + (*back++) +
+                                               (*(middle - 2)) + (*middle) - source_term);
 
 #endif
 #ifdef INDEXING
-                    float source_term = delta_squared * args->source[IDX(n, i, j, k)];
+                    cell_t source_term = delta_squared * args->source[IDX(n, i, j, k)];
                     next[IDX(n, i, j, k)] =
                         1.0 / 6.0 *
                         (curr[IDX(n, i + 1, j, k)] + curr[IDX(n, i - 1, j, k)] +
@@ -122,7 +129,7 @@ void* worker(void* vargs)
 #endif
         }
 
-        float* temp = curr;
+        cell_t* temp = curr;
         curr = next;
         next = temp;
 
@@ -141,8 +148,8 @@ void* worker(void* vargs)
  * Do cell update while checking all boundary conditions
  */
 // TODO do the pointer optimization like in the normal worker task here as well
-inline void
-do_cell(float* source, float* curr, float* next, float delta_squared, int n, int i, int j, int k)
+inline void do_cell(
+    cell_t* source, cell_t* curr, cell_t* next, cell_t delta_squared, int n, int i, int j, int k)
 {
     int ip = (i == n - 1) ? -1 : 1;
     int in = (i == 0) ? -1 : 1;
@@ -151,7 +158,7 @@ do_cell(float* source, float* curr, float* next, float delta_squared, int n, int
     int kp = (k == n - 1) ? -1 : 1;
     int kn = (k == 0) ? -1 : 1;
 
-    float source_term = delta_squared * source[IDX(n, i, j, k)];
+    cell_t source_term = delta_squared * source[IDX(n, i, j, k)];
     next[IDX(n, i, j, k)] = 1.0 / 6.0 *
                             (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
                              curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
@@ -164,8 +171,8 @@ do_cell(float* source, float* curr, float* next, float delta_squared, int n, int
 void* boundary_worker(void* vargs)
 {
     boundary_thread_args_t* args = (boundary_thread_args_t*)vargs;
-    float* curr = args->curr;
-    float* next = args->next;
+    cell_t* curr = args->curr;
+    cell_t* next = args->next;
     int n = args->n;
 
     for (int iter = 0; iter < args->iterations; iter++) {
@@ -185,43 +192,26 @@ void* boundary_worker(void* vargs)
         for (int j = 0; j < n; j++) {
             for (int i = 0; i < n; i++) {
                 do_cell(args->source, curr, next, args->delta_squared, n, i, j, 0);
-            }
-        }
-        // bottom k-slice
-        for (int j = 0; j < n; j++) {
-            for (int i = 0; i < n; i++) {
                 do_cell(args->source, curr, next, args->delta_squared, n, i, j, n - 1);
             }
         }
-
         // left j-slice
         for (int k = 1; k < n - 1; k++) {
             for (int i = 0; i < n; i++) {
                 do_cell(args->source, curr, next, args->delta_squared, n, i, 0, k);
-            }
-        }
-        // right j-slice
-        for (int k = 1; k < n - 1; k++) {
-            for (int i = 0; i < n; i++) {
                 do_cell(args->source, curr, next, args->delta_squared, n, i, n - 1, k);
             }
         }
-
         // front i-slice
         for (int k = 1; k < n - 1; k++) {
             for (int j = 1; j < n - 1; j++) {
                 do_cell(args->source, curr, next, args->delta_squared, n, 0, j, k);
-            }
-        }
-        // back i-slice
-        for (int k = 1; k < n - 1; k++) {
-            for (int j = 1; j < n - 1; j++) {
                 do_cell(args->source, curr, next, args->delta_squared, n, n - 1, j, k);
             }
         }
 #endif
 
-        float* temp = curr;
+        cell_t* temp = curr;
         curr = next;
         next = temp;
 
@@ -235,7 +225,7 @@ void* boundary_worker(void* vargs)
     return NULL;
 }
 
-float* poisson_neumann(int n, float* source, int iterations, int num_threads, float delta)
+cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, cell_t delta)
 {
     if (debug) {
         printf(
@@ -251,13 +241,13 @@ float* poisson_neumann(int n, float* source, int iterations, int num_threads, fl
     }
 
 #ifdef CACHE_ALIGN_BUFFERS
-    float *curr, *next;
+    cell_t *curr, *next;
     // Allocate curr and next to be cache aligned
-    posix_memalign((void**)&curr, CACHE_LINE_SIZE, n * n * n * sizeof(float));
-    posix_memalign((void**)&next, CACHE_LINE_SIZE, n * n * n * sizeof(float));
+    posix_memalign((void**)&curr, CACHE_LINE_SIZE, n * n * n * sizeof(cell_t));
+    posix_memalign((void**)&next, CACHE_LINE_SIZE, n * n * n * sizeof(cell_t));
 #else
-    float* curr = (float*)calloc(n * n * n, sizeof(float));
-    float* next = (float*)calloc(n * n * n, sizeof(float));
+    cell_t* curr = (cell_t*)calloc(n * n * n, sizeof(cell_t));
+    cell_t* next = (cell_t*)calloc(n * n * n, sizeof(cell_t));
 #endif
 
     // Ensure we haven't run out of memory
@@ -268,7 +258,7 @@ float* poisson_neumann(int n, float* source, int iterations, int num_threads, fl
 
     pthread_t* threads = (pthread_t*)malloc(num_threads * sizeof(pthread_t));
     thread_args_t* thread_args = (thread_args_t*)malloc(num_threads * sizeof(thread_args_t));
-    float delta_squared = delta * delta;
+    cell_t delta_squared = delta * delta;
 
     // Init the boundary thread
     pthread_barrier_init(&barrier, NULL, num_threads + 1);
@@ -315,7 +305,7 @@ float* poisson_neumann(int n, float* source, int iterations, int num_threads, fl
     pthread_join(boundary_thread, NULL);
 
     if (iterations % 2 != 0) {
-        float* temp = curr;
+        cell_t* temp = curr;
         curr = next;
         next = temp;
     }
@@ -338,7 +328,7 @@ int main(int argc, char** argv)
     int iterations = 10;
     int n = 5;
     int threads = 1;
-    float delta = 1;
+    cell_t delta = 1;
 
     // parse the command line arguments
     for (int i = 1; i < argc; ++i) {
@@ -387,11 +377,11 @@ int main(int argc, char** argv)
     }
 
 #ifdef CACHE_ALIGN_BUFFERS
-    float* source;
-    posix_memalign((void**)&source, CACHE_LINE_SIZE, n * n * n * sizeof(float));
-    memset(source, 0, n * n * n * sizeof(float));
+    cell_t* source;
+    posix_memalign((void**)&source, CACHE_LINE_SIZE, n * n * n * sizeof(cell_t));
+    memset(source, 0, n * n * n * sizeof(cell_t));
 #else
-    float* source = (float*)calloc(n * n * n, sizeof(float));
+    cell_t* source = (cell_t*)calloc(n * n * n, sizeof(cell_t));
 #endif
 
     source[(n * n * n) / 2] = 1;
@@ -399,12 +389,12 @@ int main(int argc, char** argv)
 #ifdef TIME_RUN
     struct timeval start, end;
     gettimeofday(&start, NULL);
-    float* result = poisson_neumann(n, source, iterations, threads, delta);
+    cell_t* result = poisson_neumann(n, source, iterations, threads, delta);
     gettimeofday(&end, NULL);
     int elapsed = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec);
     printf("%d elapsed\n", elapsed);
 #else
-    float* result = poisson_neumann(n, source, iterations, threads, delta);
+    cell_t* result = poisson_neumann(n, source, iterations, threads, delta);
     // Print out the middle slice of the cube for validation
     for (int x = 0; x < n; ++x) {
         for (int y = 0; y < n; ++y) {

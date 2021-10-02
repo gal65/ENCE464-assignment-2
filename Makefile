@@ -1,7 +1,9 @@
 MAKEFLAGS += -j4
+SHELL := /bin/bash
 
 CFLAGS = -O3 -Ofast -fwhole-program -flto -pthread -Wall -Wno-maybe-uninitialized -march=native --std=gnu99
 CFLAGS_NO_OPT = -Og -pthread -Wall -Wno-maybe-uninitialized --std=gnu99
+CFLAGS_CLANG = -O3 -Ofast -ffast-math -pthread -march=native
 
 CFLAGS += $(PFLAGS)
 CFLAGS_NO_OPT += $(PFLAGS)
@@ -12,6 +14,9 @@ B_TARGET = main_b
 
 # arguments passed to main when running test w/ cachegrind:
 TEST_ARGS = -n 151 -i 100 -t $(shell nproc --all)
+# arguments passed when timing
+
+TIME_ARGS = -n 201 -i 100 -t $(shell nproc --all)
 
 super_optimized: CFLAGS+= -fprofile-use
 super_optimized: $(TARGET)
@@ -26,6 +31,9 @@ full_clean: clean
 
 %: %.c
 	gcc $(CFLAGS) $< -o $@
+
+clang: main.c
+	clang $(CFLAGS_CLANG) main.c -o main
 
 # Make with profiling hooks
 prof: CFLAGS += -pg
@@ -95,8 +103,16 @@ checkbuild_b:
 abtest: checkbuild_a checkbuild_b
 
 abcheck: build_a build_b
-	./test.sh ./main_a
-	./test.sh ./main_b
+	./test.sh ./main_a; true
+	./test.sh ./main_b; true
+
+abtime: build_a build_b
+	echo "timing A"
+	time ./$(A_TARGET) $(TEST_ARGS) > /dev/null
+	echo "timing B"
+	time ./$(B_TARGET) $(TEST_ARGS) > /dev/null
+
+.DEFAULT: super_optimized
 
 .PHONY: \
 super_optimized \
@@ -111,6 +127,7 @@ checkbuild_a \
 checkbuild_b \
 abtest \
 abcheck \
+abtime \
 pgo_use \
 pgo_gen \
 pgo_full
