@@ -19,12 +19,7 @@ static bool debug = false;
 #define SINGLE_BOUNDARY_LOOP
 #define CACHE_ALIGN_BUFFERS
 
-#ifdef A
 typedef float cell_t;
-#endif
-#ifdef B
-typedef double cell_t;
-#endif
 
 #define UNSAFE_ASSERT(x) \
     if (!(x))            \
@@ -60,7 +55,6 @@ void* worker(void* vargs)
     cell_t* next = args->next;
     int n = args->n;
     const cell_t delta_squared = args->delta_squared;
-    const cell_t one_sixth = 1.0 / 6.0;
 #ifdef PTR_OPTIMIZATION
     #define BUF_POINTERS \
         X(top)           \
@@ -78,6 +72,7 @@ void* worker(void* vargs)
 
     for (int iter = 0; iter < args->iterations; iter++) {
 #ifdef PTR_OPTIMIZATION
+        // TODO can we have a single pointer here, where all others are derived with offsets?
         middle = &curr[IDX(n, 1, 1, args->k_start)];
         source_ptr = &args->source[IDX(n, 1, 1, args->k_start)];
         next_ptr = &next[IDX(n, 1, 1, args->k_start)];
@@ -100,8 +95,9 @@ void* worker(void* vargs)
 #ifdef PTR_OPTIMIZATION
                     cell_t source_term = delta_squared * (*source_ptr++);
                     middle++;
-                    *next_ptr++ = one_sixth * ((*top++) + (*bottom++) + (*front++) + (*back++) +
-                                               (*(middle - 2)) + (*middle) - source_term);
+                    *next_ptr++ = 1.0 / 6.0 *
+                                  ((*top++) + (*bottom++) + (*front++) + (*back++) +
+                                   (*(middle - 2)) + (*middle) - source_term);
 
 #endif
 #ifdef INDEXING

@@ -200,3 +200,12 @@ single:
 	vmulss %xmm5,%xmm0,%xmm0
 	vmovss %xmm0,(%r8)
 ```
+
+## Float issues
+- When chaning 1/6 from double to float, it fails the 15x15 test by 0.00001 on edges.
+
+## TODO
+- AB test boundary thread
+- -cache locality
+- +vectorise boundary
+- +less threading overhead

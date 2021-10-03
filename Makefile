@@ -1,5 +1,5 @@
 MAKEFLAGS += -j4
-SHELL := /bin/bash
+# SHELL := /bin/bash
 
 CFLAGS = -O3 -Ofast -fwhole-program -flto -pthread -Wall -Wno-maybe-uninitialized -march=native --std=gnu99
 CFLAGS_NO_OPT = -Og -pthread -Wall -Wno-maybe-uninitialized --std=gnu99
