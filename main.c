@@ -10,17 +10,32 @@
 // set to true when operating in debug mode to enable verbose logging
 static bool debug = false;
 
+// Index into a 3d array
 #define IDX(n, i, j, k) (((k) * (n) + (j)) * (n) + (i))
 
 #define CACHE_LINE_SIZE 64
 
-// Define implementation options:
-#define PTR_OPTIMIZATION
-#define SINGLE_BOUNDARY_LOOP
-#define CACHE_ALIGN_BUFFERS
-
+// datatype to perform relaxation on
 typedef float cell_t;
 
+// Define implementation options:
+
+// Instead of using array indexing for each thing, keep multiple running
+// pointers, and increment them
+#define PTR_OPTIMIZATION
+
+// Instead of iterating over all boundary slices separately, use a single loop
+#define SINGLE_BOUNDARY_LOOP
+
+// Malloc all large buffers to be aligned with cache boundaries (see
+// CACHE_LINE_SIZE above)
+#define CACHE_ALIGN_BUFFERS
+
+// Instead of spinning up a separate thread for the boundary conditions,
+// distribute the 6 boundary faces of the cube over all available threads
+// #define DISTRIBUTE_BOUNDARY
+
+// Compiler hint that x is always true
 #define UNSAFE_ASSERT(x) \
     if (!(x))            \
     __builtin_unreachable()
@@ -34,6 +49,9 @@ typedef struct {
     int k_end;
     int iterations;
     cell_t delta_squared;
+#ifdef DISTRIBUTE_BOUNDARY
+    char boundary_allocation;
+#endif
 } thread_args_t;
 
 typedef struct {
@@ -47,6 +65,9 @@ typedef struct {
 
 // barrier is used for all threads to wait for eachother between iterations
 pthread_barrier_t barrier;
+
+inline void do_cell(
+    cell_t* source, cell_t* curr, cell_t* next, cell_t delta_squared, int n, int i, int j, int k);
 
 void* worker(void* vargs)
 {
@@ -125,6 +146,23 @@ void* worker(void* vargs)
 #endif
         }
 
+#ifdef DISTRIBUTE_BOUNDARY
+    #define DO_BOUNDARY(alloc, i, j, k, a_start, a_end, b_start, b_end)                       \
+        if (args->boundary_allocation & (alloc)) {                                            \
+            for (int b = (b_start); b < (b_end); b++) {                                       \
+                for (int a = (a_start); a < (a_end); a++) {                                   \
+                    do_cell(args->source, curr, next, args->delta_squared, n, (i), (j), (k)); \
+                }                                                                             \
+            }                                                                                 \
+        }
+        DO_BOUNDARY(1 << 0, a, b, 0, 0, n, 0, n);
+        DO_BOUNDARY(1 << 1, a, b, n - 1, 0, n, 0, n);
+        DO_BOUNDARY(1 << 2, a, 0, b, 0, n, 1, n - 1);
+        DO_BOUNDARY(1 << 3, a, n - 1, b, 0, n, 1, n - 1);
+        DO_BOUNDARY(1 << 4, 0, a, b, 1, n - 1, 1, n - 1);
+        DO_BOUNDARY(1 << 5, n - 1, a, b, 1, n - 1, 1, n - 1);
+#endif
+
         cell_t* temp = curr;
         curr = next;
         next = temp;
@@ -161,6 +199,7 @@ inline void do_cell(
                              curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
 }
 
+#ifndef DISTRIBUTE_BOUNDARY
 // TODO at large number of threads or large sizes, boundary thread will surpass worker threads in
 // work required. Need to allocate a proportional amount of threads to the boundary so other threads
 // are not stuck waiting. OR: each thread does it's own boundary scan
@@ -172,7 +211,7 @@ void* boundary_worker(void* vargs)
     int n = args->n;
 
     for (int iter = 0; iter < args->iterations; iter++) {
-#ifdef SINGLE_BOUNDARY_LOOP
+    #ifdef SINGLE_BOUNDARY_LOOP
         for (int b = 0; b < n; b++) {
             for (int a = 0; a < n; a++) {
                 do_cell(args->source, curr, next, args->delta_squared, n, a, b, 0);
@@ -183,7 +222,7 @@ void* boundary_worker(void* vargs)
                 do_cell(args->source, curr, next, args->delta_squared, n, n - 1, a, b);
             }
         }
-#else
+    #else
         // top k-slice
         for (int j = 0; j < n; j++) {
             for (int i = 0; i < n; i++) {
@@ -205,21 +244,22 @@ void* boundary_worker(void* vargs)
                 do_cell(args->source, curr, next, args->delta_squared, n, n - 1, j, k);
             }
         }
-#endif
+    #endif
 
         cell_t* temp = curr;
         curr = next;
         next = temp;
 
-#ifdef PRINT_TIMESTAMP
+    #ifdef PRINT_TIMESTAMP
         struct timeval t;
         gettimeofday(&t, NULL);
         printf("boundary wait %ld\n", t.tv_usec);
-#endif
+    #endif
         pthread_barrier_wait(&barrier);
     }
     return NULL;
 }
+#endif
 
 cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, cell_t delta)
 {
@@ -256,6 +296,11 @@ cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, 
     thread_args_t* thread_args = (thread_args_t*)malloc(num_threads * sizeof(thread_args_t));
     cell_t delta_squared = delta * delta;
 
+#ifdef DISTRIBUTE_BOUNDARY
+    pthread_barrier_init(&barrier, NULL, num_threads);
+    int div = 6 / num_threads;
+    int rem = 6 % num_threads;
+#else
     // Init the boundary thread
     pthread_barrier_init(&barrier, NULL, num_threads + 1);
     boundary_thread_args_t args = {
@@ -267,6 +312,7 @@ cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, 
         .delta_squared = delta_squared};
     pthread_t boundary_thread;
     pthread_create(&boundary_thread, NULL, &boundary_worker, &args);
+#endif
 
     // init the worker threads
     for (int thread_idx = 0; thread_idx < num_threads; thread_idx++) {
@@ -282,6 +328,35 @@ cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, 
             k_start = 1;
         }
 
+#ifdef DISTRIBUTE_BOUNDARY
+        char boundary_alloc = 0;
+        // If there are less than 6 threads (ie. every single thread gets
+        // allocated at least one boundary slice), generate chunks of 1s
+        // size div `(1<<div)-1`. These chunks should be shifted over based
+        // on thread index. For non chunking allocation (more than 6
+        // threads), div will be zero, so (1<<div)-1 will also be zero, and
+        // all allocation will be handled by the remainder.
+        boundary_alloc = ((1 << div) - 1) << (thread_idx * div);
+
+        // If there are remaining threads after the chunking allocation,
+        // spread the remainder over all threads. This also handles the
+        // case of num_threads > 6, where the remainder if always 6. These
+        // 6 slices will distributed across the first 6 threads.
+        if (thread_idx < rem) {
+            boundary_alloc |= 1 << (div * num_threads + thread_idx);
+        }
+
+        thread_args[thread_idx] = (thread_args_t){
+            .source = source,
+            .curr = curr,
+            .next = next,
+            .n = n,
+            .k_start = k_start,
+            .k_end = k_end,
+            .iterations = iterations,
+            .delta_squared = delta_squared,
+            .boundary_allocation = boundary_alloc};
+#else
         thread_args[thread_idx] = (thread_args_t){
             .source = source,
             .curr = curr,
@@ -291,6 +366,7 @@ cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, 
             .k_end = k_end,
             .iterations = iterations,
             .delta_squared = delta_squared};
+#endif
 
         pthread_create(&threads[thread_idx], NULL, &worker, &thread_args[thread_idx]);
     }
@@ -298,7 +374,10 @@ cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, 
     for (int thread_idx = 0; thread_idx < num_threads; thread_idx++) {
         pthread_join(threads[thread_idx], NULL);
     }
+
+#ifndef DISTRIBUTE_BOUNDARY
     pthread_join(boundary_thread, NULL);
+#endif
 
     if (iterations % 2 != 0) {
         cell_t* temp = curr;

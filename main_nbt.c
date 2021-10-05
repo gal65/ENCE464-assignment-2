@@ -19,7 +19,7 @@ static bool debug = false;
 #define SINGLE_BOUNDARY_LOOP
 #define CACHE_ALIGN_BUFFERS
 
-typedef double cell_t;
+typedef float cell_t;
 
 #define UNSAFE_ASSERT(x) \
     if (!(x))            \
