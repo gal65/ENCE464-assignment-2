@@ -19,7 +19,7 @@ static bool debug = false;
 #define SINGLE_BOUNDARY_LOOP
 #define CACHE_ALIGN_BUFFERS
 
-typedef float cell_t;
+typedef double cell_t;
 
 #define UNSAFE_ASSERT(x) \
     if (!(x))            \
@@ -34,19 +34,32 @@ typedef struct {
     int k_end;
     int iterations;
     cell_t delta_squared;
+    char boundary_allocation;
 } thread_args_t;
-
-typedef struct {
-    cell_t* source;
-    cell_t* curr;
-    cell_t* next;
-    int n;
-    int iterations;
-    cell_t delta_squared;
-} boundary_thread_args_t;
 
 // barrier is used for all threads to wait for eachother between iterations
 pthread_barrier_t barrier;
+
+/**
+ * Do cell update while checking all boundary conditions
+ */
+// TODO do the pointer optimization like in the normal worker task here as well
+inline void do_cell(
+    cell_t* source, cell_t* curr, cell_t* next, cell_t delta_squared, int n, int i, int j, int k)
+{
+    int ip = (i == n - 1) ? -1 : 1;
+    int in = (i == 0) ? -1 : 1;
+    int jp = (j == n - 1) ? -1 : 1;
+    int jn = (j == 0) ? -1 : 1;
+    int kp = (k == n - 1) ? -1 : 1;
+    int kn = (k == 0) ? -1 : 1;
+
+    cell_t source_term = delta_squared * source[IDX(n, i, j, k)];
+    next[IDX(n, i, j, k)] = 1.0 / 6.0 *
+                            (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
+                             curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
+                             curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
+}
 
 void* worker(void* vargs)
 {
@@ -113,6 +126,21 @@ void* worker(void* vargs)
 #endif
         }
 
+#define DO_BOUNDARY(alloc, i, j, k, a_start, a_end, b_start, b_end)                       \
+    if (args->boundary_allocation & (alloc)) {                                            \
+        for (int b = (b_start); b < (b_end); b++) {                                       \
+            for (int a = (a_start); a < (a_end); a++) {                                   \
+                do_cell(args->source, curr, next, args->delta_squared, n, (i), (j), (k)); \
+            }                                                                             \
+        }                                                                                 \
+    }
+        DO_BOUNDARY(1 << 0, a, b, 0, 0, n, 0, n);
+        DO_BOUNDARY(1 << 1, a, b, n - 1, 0, n, 0, n);
+        DO_BOUNDARY(1 << 2, a, 0, b, 0, n, 1, n - 1);
+        DO_BOUNDARY(1 << 3, a, n - 1, b, 0, n, 1, n - 1);
+        DO_BOUNDARY(1 << 4, 0, a, b, 1, n - 1, 1, n - 1);
+        DO_BOUNDARY(1 << 5, n - 1, a, b, 1, n - 1, 1, n - 1);
+
         cell_t* temp = curr;
         curr = next;
         next = temp;
@@ -126,27 +154,6 @@ void* worker(void* vargs)
         pthread_barrier_wait(&barrier);
     }
     return NULL;
-}
-
-/**
- * Do cell update while checking all boundary conditions
- */
-// TODO do the pointer optimization like in the normal worker task here as well
-inline void do_cell(
-    cell_t* source, cell_t* curr, cell_t* next, cell_t delta_squared, int n, int i, int j, int k)
-{
-    int ip = (i == n - 1) ? -1 : 1;
-    int in = (i == 0) ? -1 : 1;
-    int jp = (j == n - 1) ? -1 : 1;
-    int jn = (j == 0) ? -1 : 1;
-    int kp = (k == n - 1) ? -1 : 1;
-    int kn = (k == 0) ? -1 : 1;
-
-    cell_t source_term = delta_squared * source[IDX(n, i, j, k)];
-    next[IDX(n, i, j, k)] = 1.0 / 6.0 *
-                            (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
-                             curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
-                             curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
 }
 
 void println_binary(char c)
@@ -190,42 +197,12 @@ cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, 
 
     pthread_t* threads = (pthread_t*)malloc(num_threads * sizeof(pthread_t));
     thread_args_t* thread_args = (thread_args_t*)malloc(num_threads * sizeof(thread_args_t));
+    pthread_barrier_init(&barrier, NULL, num_threads);
+
     cell_t delta_squared = delta * delta;
 
-    // Allocate boundary slices to threads
     int div = 6 / num_threads;
     int rem = 6 % num_threads;
-    int alloc_index = 0;
-    for (int thread_idx = 0; thread_idx < num_threads; thread_idx++) {
-        char alloc = 0;
-        switch (num_threads) {
-        case 1:
-            alloc = 0b111111;
-            break;
-        case 2:
-            alloc = 0b111 << (thread_idx * 3);
-            break;
-        case 3:
-            alloc = 0b11 << (thread_idx * 2);
-            break;
-        case 4:
-        case 5:
-        case 6:
-            alloc = 0b1 << thread_idx;
-            if (thread_idx < (6 - num_threads)) {
-                alloc |= 0b1 << (num_threads + thread_idx);
-            }
-            break;
-        default:
-            if (thread_idx < 6) {
-                alloc = 0b1 << thread_idx;
-            }
-            break;
-        }
-        printf("%d\t", thread_idx);
-        println_binary(alloc);
-    }
-    exit(0);
 
     // init the worker threads
     for (int thread_idx = 0; thread_idx < num_threads; thread_idx++) {
@@ -241,6 +218,23 @@ cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, 
             k_start = 1;
         }
 
+        char boundary_alloc = 0;
+        // If there are less than 6 threads (ie. every single thread gets
+        // allocated at least one boundary slice), generate chunks of 1s
+        // size div `(1<<div)-1`. These chunks should be shifted over based
+        // on thread index. For non chunking allocation (more than 6
+        // threads), div will be zero, so (1<<div)-1 will also be zero, and
+        // all allocation will be handled by the remainder.
+        boundary_alloc = ((1 << div) - 1) << (thread_idx * div);
+
+        // If there are remaining threads after the chunking allocation,
+        // spread the remainder over all threads. This also handles the
+        // case of num_threads > 6, where the remainder if always 6. These
+        // 6 slices will distributed across the first 6 threads.
+        if (thread_idx < rem) {
+            boundary_alloc |= 1 << (div * num_threads + thread_idx);
+        }
+
         thread_args[thread_idx] = (thread_args_t){
             .source = source,
             .curr = curr,
@@ -249,7 +243,8 @@ cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, 
             .k_start = k_start,
             .k_end = k_end,
             .iterations = iterations,
-            .delta_squared = delta_squared};
+            .delta_squared = delta_squared,
+            .boundary_allocation = boundary_alloc};
 
         pthread_create(&threads[thread_idx], NULL, &worker, &thread_args[thread_idx]);
     }
