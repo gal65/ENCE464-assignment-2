@@ -6,6 +6,8 @@
 #include <string.h>
 #include <sys/time.h>
 
+//TODO: loop tiling, iterate through j
+
 // Global flag
 // set to true when operating in debug mode to enable verbose logging
 static bool debug = false;
