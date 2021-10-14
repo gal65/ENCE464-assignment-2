@@ -13,7 +13,7 @@ A_TARGET = main_a
 B_TARGET = main_b
 
 # arguments passed to main when running test w/ cachegrind:
-TEST_ARGS = -n 151 -i 100 -t $(shell nproc --all)
+TEST_ARGS = -n 101 -i 100 -t $(shell nproc --all)
 # arguments passed when timing
 
 TIME_ARGS = -n 201 -i 100 -t $(shell nproc --all)

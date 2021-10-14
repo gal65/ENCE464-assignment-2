@@ -3,7 +3,7 @@
 ns=(101 201 301 401 501 601 701 801 901)
 t=4
 i=100
-exe=new_world
+exe=main
 
 for n in ${ns[@]}; do
     echo "running for n=$n"
