@@ -209,3 +209,25 @@ single:
 - -cache locality
 - +vectorise boundary
 - +less threading overhead
+
+## Distributing boundary work over all threads
+Instead of having separate boundary thread, each worker is responsible for part of the boundary
+
+Distributing:
+- less time spent swapping in other thread
+- cycles: 9.8T
+- L1 miss: 128M
+- L3 miss: **76M**
+- bottleneck: L3 misses in boundary work: **14M**
+
+Separate thread
+- extra time spent swapping in threads
+- Faster
+- cycles: 10.5T
+- L1 miss: 120M
+- L3 miss: **71M**
+- L3 misses in boundary work: **8M**
+
+Separate thread is faster because the separate thread can keep most of the boundary in the L2 or L3 cache. With separate threads, each worker thread can keep some of it's domain in cache between iterations. If it also needs to do some of the boundary work (impl 2), this will be thrashed by the boundary iteration.
+
+L3 misses are the bottleneck in this case.

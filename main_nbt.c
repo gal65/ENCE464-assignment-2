@@ -6,38 +6,21 @@
 #include <string.h>
 #include <sys/time.h>
 
-//TODO: loop tiling, iterate through j
-
 // Global flag
 // set to true when operating in debug mode to enable verbose logging
 static bool debug = false;
 
-// Index into a 3d array
 #define IDX(n, i, j, k) (((k) * (n) + (j)) * (n) + (i))
 
 #define CACHE_LINE_SIZE 64
 
-// datatype to perform relaxation on
-typedef double cell_t;
-
 // Define implementation options:
-
-// Instead of using array indexing for each thing, keep multiple running
-// pointers, and increment them
 #define PTR_OPTIMIZATION
-
-// Instead of iterating over all boundary slices separately, use a single loop
 #define SINGLE_BOUNDARY_LOOP
-
-// Malloc all large buffers to be aligned with cache boundaries (see
-// CACHE_LINE_SIZE above)
 #define CACHE_ALIGN_BUFFERS
 
-// Instead of spinning up a separate thread for the boundary conditions,
-// distribute the 6 boundary faces of the cube over all available threads
-#define DISTRIBUTE_BOUNDARY
+typedef float cell_t;
 
-// Compiler hint that x is always true
 #define UNSAFE_ASSERT(x) \
     if (!(x))            \
     __builtin_unreachable()
@@ -51,25 +34,32 @@ typedef struct {
     int k_end;
     int iterations;
     cell_t delta_squared;
-#ifdef DISTRIBUTE_BOUNDARY
     char boundary_allocation;
-#endif
 } thread_args_t;
-
-typedef struct {
-    cell_t* restrict source;
-    cell_t* restrict curr;
-    cell_t* restrict next;
-    int n;
-    int iterations;
-    cell_t delta_squared;
-} boundary_thread_args_t;
 
 // barrier is used for all threads to wait for eachother between iterations
 pthread_barrier_t barrier;
 
+/**
+ * Do cell update while checking all boundary conditions
+ */
+// TODO do the pointer optimization like in the normal worker task here as well
 inline void do_cell(
-    cell_t* restrict source, cell_t* restrict curr, cell_t* restrict next, cell_t delta_squared, int n, int i, int j, int k);
+    cell_t* source, cell_t* curr, cell_t* next, cell_t delta_squared, int n, int i, int j, int k)
+{
+    int ip = (i == n - 1) ? -1 : 1;
+    int in = (i == 0) ? -1 : 1;
+    int jp = (j == n - 1) ? -1 : 1;
+    int jn = (j == 0) ? -1 : 1;
+    int kp = (k == n - 1) ? -1 : 1;
+    int kn = (k == 0) ? -1 : 1;
+
+    cell_t source_term = delta_squared * source[IDX(n, i, j, k)];
+    next[IDX(n, i, j, k)] = 1.0 / 6.0 *
+                            (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
+                             curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
+                             curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
+}
 
 void* worker(void* vargs)
 {
@@ -115,23 +105,11 @@ void* worker(void* vargs)
             UNSAFE_ASSERT(k < n - 1);
             for (int j = 1; j < n - 1; j++) {
                 for (int i = 1; i < n - 1; i++) {
-#ifdef PTR_OPTIMIZATION
                     cell_t source_term = delta_squared * (*source_ptr++);
                     middle++;
                     *next_ptr++ = 1.0 / 6.0 *
                                   ((*top++) + (*bottom++) + (*front++) + (*back++) +
                                    (*(middle - 2)) + (*middle) - source_term);
-
-#endif
-#ifdef INDEXING
-                    cell_t source_term = delta_squared * args->source[IDX(n, i, j, k)];
-                    next[IDX(n, i, j, k)] =
-                        1.0f / 6.0f *
-                        (curr[IDX(n, i + 1, j, k)] + curr[IDX(n, i - 1, j, k)] +
-                         curr[IDX(n, i, j + 1, k)] + curr[IDX(n, i, j - 1, k)] +
-                         curr[IDX(n, i, j, k + 1)] + curr[IDX(n, i, j, k - 1)] - source_term);
-#endif
-                    // do_cell(args->source, curr, next, args->delta_squared, n, i, j, k);
                 }
 
 #ifdef PTR_OPTIMIZATION
@@ -148,22 +126,20 @@ void* worker(void* vargs)
 #endif
         }
 
-#ifdef DISTRIBUTE_BOUNDARY
-    #define DO_BOUNDARY(alloc, i, j, k, a_start, a_end, b_start, b_end)                       \
-        if (args->boundary_allocation & (alloc)) {                                            \
-            for (int b = (b_start); b < (b_end); b++) {                                       \
-                for (int a = (a_start); a < (a_end); a++) {                                   \
-                    do_cell(args->source, curr, next, args->delta_squared, n, (i), (j), (k)); \
-                }                                                                             \
-            }                                                                                 \
-        }
+#define DO_BOUNDARY(alloc, i, j, k, a_start, a_end, b_start, b_end)                       \
+    if (args->boundary_allocation & (alloc)) {                                            \
+        for (int b = (b_start); b < (b_end); b++) {                                       \
+            for (int a = (a_start); a < (a_end); a++) {                                   \
+                do_cell(args->source, curr, next, args->delta_squared, n, (i), (j), (k)); \
+            }                                                                             \
+        }                                                                                 \
+    }
         DO_BOUNDARY(1 << 0, a, b, 0, 0, n, 0, n);
         DO_BOUNDARY(1 << 1, a, b, n - 1, 0, n, 0, n);
         DO_BOUNDARY(1 << 2, a, 0, b, 0, n, 1, n - 1);
         DO_BOUNDARY(1 << 3, a, n - 1, b, 0, n, 1, n - 1);
         DO_BOUNDARY(1 << 4, 0, a, b, 1, n - 1, 1, n - 1);
         DO_BOUNDARY(1 << 5, n - 1, a, b, 1, n - 1, 1, n - 1);
-#endif
 
         cell_t* temp = curr;
         curr = next;
@@ -180,90 +156,15 @@ void* worker(void* vargs)
     return NULL;
 }
 
-/**
- * Do cell update while checking all boundary conditions
- */
-// TODO do the pointer optimization like in the normal worker task here as well
-inline void do_cell(
-    cell_t* restrict source, cell_t* restrict curr, cell_t* restrict next, cell_t delta_squared, int n, int i, int j, int k)
+void println_binary(char c)
 {
-    int ip = (i == n - 1) ? -1 : 1;
-    int in = (i == 0) ? -1 : 1;
-    int jp = (j == n - 1) ? -1 : 1;
-    int jn = (j == 0) ? -1 : 1;
-    int kp = (k == n - 1) ? -1 : 1;
-    int kn = (k == 0) ? -1 : 1;
-
-    cell_t source_term = delta_squared * source[IDX(n, i, j, k)];
-    next[IDX(n, i, j, k)] = 1.0f / 6.0f *
-                            (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
-                             curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
-                             curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
-}
-
-#ifndef DISTRIBUTE_BOUNDARY
-// TODO at large number of threads or large sizes, boundary thread will surpass worker threads in
-// work required. Need to allocate a proportional amount of threads to the boundary so other threads
-// are not stuck waiting. OR: each thread does it's own boundary scan
-void* boundary_worker(void* vargs)
-{
-    boundary_thread_args_t* args = (boundary_thread_args_t*)vargs;
-    cell_t* curr = args->curr;
-    cell_t* next = args->next;
-    int n = args->n;
-
-    for (int iter = 0; iter < args->iterations; iter++) {
-    #ifdef SINGLE_BOUNDARY_LOOP
-        for (int b = 0; b < n; b++) {
-            for (int a = 0; a < n; a++) {
-                do_cell(args->source, curr, next, args->delta_squared, n, a, b, 0);
-                do_cell(args->source, curr, next, args->delta_squared, n, a, b, n - 1);
-                do_cell(args->source, curr, next, args->delta_squared, n, a, 0, b);
-                do_cell(args->source, curr, next, args->delta_squared, n, a, n - 1, b);
-                do_cell(args->source, curr, next, args->delta_squared, n, 0, a, b);
-                do_cell(args->source, curr, next, args->delta_squared, n, n - 1, a, b);
-            }
-        }
-    #else
-        // top k-slice
-        for (int j = 0; j < n; j++) {
-            for (int i = 0; i < n; i++) {
-                do_cell(args->source, curr, next, args->delta_squared, n, i, j, 0);
-                do_cell(args->source, curr, next, args->delta_squared, n, i, j, n - 1);
-            }
-        }
-        // left j-slice
-        for (int k = 1; k < n - 1; k++) {
-            for (int i = 0; i < n; i++) {
-                do_cell(args->source, curr, next, args->delta_squared, n, i, 0, k);
-                do_cell(args->source, curr, next, args->delta_squared, n, i, n - 1, k);
-            }
-        }
-        // front i-slice
-        for (int k = 1; k < n - 1; k++) {
-            for (int j = 1; j < n - 1; j++) {
-                do_cell(args->source, curr, next, args->delta_squared, n, 0, j, k);
-                do_cell(args->source, curr, next, args->delta_squared, n, n - 1, j, k);
-            }
-        }
-    #endif
-
-        cell_t* temp = curr;
-        curr = next;
-        next = temp;
-
-    #ifdef PRINT_TIMESTAMP
-        struct timeval t;
-        gettimeofday(&t, NULL);
-        printf("boundary wait %ld\n", t.tv_usec);
-    #endif
-        pthread_barrier_wait(&barrier);
+    for (int i = 0; i < 8; i++) {
+        printf("%d", !!((c << i) & 0b10000000));
     }
-    return NULL;
+    printf("\n");
 }
-#endif
 
-cell_t* poisson_neumann(int n, cell_t* restrict source, int iterations, int num_threads, cell_t delta)
+cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, cell_t delta)
 {
     if (debug) {
         printf(
@@ -296,25 +197,12 @@ cell_t* poisson_neumann(int n, cell_t* restrict source, int iterations, int num_
 
     pthread_t* threads = (pthread_t*)malloc(num_threads * sizeof(pthread_t));
     thread_args_t* thread_args = (thread_args_t*)malloc(num_threads * sizeof(thread_args_t));
+    pthread_barrier_init(&barrier, NULL, num_threads);
+
     cell_t delta_squared = delta * delta;
 
-#ifdef DISTRIBUTE_BOUNDARY
-    pthread_barrier_init(&barrier, NULL, num_threads);
     int div = 6 / num_threads;
     int rem = 6 % num_threads;
-#else
-    // Init the boundary thread
-    pthread_barrier_init(&barrier, NULL, num_threads + 1);
-    boundary_thread_args_t args = {
-        .source = source,
-        .curr = curr,
-        .next = next,
-        .n = n,
-        .iterations = iterations,
-        .delta_squared = delta_squared};
-    pthread_t boundary_thread;
-    pthread_create(&boundary_thread, NULL, &boundary_worker, &args);
-#endif
 
     // init the worker threads
     for (int thread_idx = 0; thread_idx < num_threads; thread_idx++) {
@@ -330,7 +218,6 @@ cell_t* poisson_neumann(int n, cell_t* restrict source, int iterations, int num_
             k_start = 1;
         }
 
-#ifdef DISTRIBUTE_BOUNDARY
         char boundary_alloc = 0;
         // If there are less than 6 threads (ie. every single thread gets
         // allocated at least one boundary slice), generate chunks of 1s
@@ -358,17 +245,6 @@ cell_t* poisson_neumann(int n, cell_t* restrict source, int iterations, int num_
             .iterations = iterations,
             .delta_squared = delta_squared,
             .boundary_allocation = boundary_alloc};
-#else
-        thread_args[thread_idx] = (thread_args_t){
-            .source = source,
-            .curr = curr,
-            .next = next,
-            .n = n,
-            .k_start = k_start,
-            .k_end = k_end,
-            .iterations = iterations,
-            .delta_squared = delta_squared};
-#endif
 
         pthread_create(&threads[thread_idx], NULL, &worker, &thread_args[thread_idx]);
     }
@@ -377,12 +253,8 @@ cell_t* poisson_neumann(int n, cell_t* restrict source, int iterations, int num_
         pthread_join(threads[thread_idx], NULL);
     }
 
-#ifndef DISTRIBUTE_BOUNDARY
-    pthread_join(boundary_thread, NULL);
-#endif
-
     if (iterations % 2 != 0) {
-        cell_t* restrict temp = curr;
+        cell_t* temp = curr;
         curr = next;
         next = temp;
     }
@@ -454,11 +326,11 @@ int main(int argc, char** argv)
     }
 
 #ifdef CACHE_ALIGN_BUFFERS
-    cell_t* restrict source;
+    cell_t* source;
     posix_memalign((void**)&source, CACHE_LINE_SIZE, n * n * n * sizeof(cell_t));
     memset(source, 0, n * n * n * sizeof(cell_t));
 #else
-    cell_t* restrict source = (cell_t*)calloc(n * n * n, sizeof(cell_t));
+    cell_t* source = (cell_t*)calloc(n * n * n, sizeof(cell_t));
 #endif
 
     source[(n * n * n) / 2] = 1;

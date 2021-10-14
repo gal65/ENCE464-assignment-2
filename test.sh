@@ -1,4 +1,4 @@
-#!/usr/bin/sh
+#!/bin/sh
 
 executable="${1:-./main}"
 status=0

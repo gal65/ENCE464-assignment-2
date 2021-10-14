@@ -1,6 +1,9 @@
 main
 main_a
 main_b
+main_clang
+main_nbt
+
 *.out
 cachegrind.out.*
 callgrind.out.*
