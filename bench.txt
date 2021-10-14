@@ -1,0 +1,55 @@
+running for n=101
+main -n 101 -t 100 -t 4
+
+real	0m0.075s
+user	0m0.094s
+sys	0m0.015s
+running for n=201
+main -n 201 -t 100 -t 4
+
+real	0m0.214s
+user	0m0.528s
+sys	0m0.111s
+running for n=301
+main -n 301 -t 100 -t 4
+
+real	0m0.625s
+user	0m1.726s
+sys	0m0.371s
+running for n=401
+main -n 401 -t 100 -t 4
+
+real	0m1.562s
+user	0m4.667s
+sys	0m0.720s
+running for n=501
+main -n 501 -t 100 -t 4
+
+real	0m3.275s
+user	0m9.839s
+sys	0m1.369s
+running for n=601
+main -n 601 -t 100 -t 4
+
+real	0m6.050s
+user	0m18.803s
+sys	0m2.401s
+running for n=701
+main -n 701 -t 100 -t 4
+
+real	0m9.754s
+user	0m31.706s
+sys	0m3.934s
+running for n=801
+main -n 801 -t 100 -t 4
+
+real	0m14.588s
+user	0m48.174s
+sys	0m5.468s
+running for n=901
+main -n 901 -t 100 -t 4
+./bench.sh: line 9: 15597 Killed                  ./$exe -n $n -t $i -t $t > /dev/null 2>&1
+
+real	0m43.527s
+user	0m6.272s
+sys	0m7.466s

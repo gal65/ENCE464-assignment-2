@@ -1,0 +1,50 @@
+running for n=101
+main -n 101 -t 100 -t 4
+
+real	0m0.051s
+user	0m0.090s
+sys	0m0.034s
+running for n=201
+main -n 201 -t 100 -t 4
+
+real	0m0.208s
+user	0m0.511s
+sys	0m0.128s
+running for n=301
+main -n 301 -t 100 -t 4
+
+real	0m0.661s
+user	0m1.835s
+sys	0m0.301s
+running for n=401
+main -n 401 -t 100 -t 4
+
+real	0m1.571s
+user	0m4.708s
+sys	0m0.720s
+running for n=501
+main -n 501 -t 100 -t 4
+
+real	0m3.277s
+user	0m9.948s
+sys	0m1.389s
+running for n=601
+main -n 601 -t 100 -t 4
+
+real	0m6.037s
+user	0m18.775s
+sys	0m2.456s
+running for n=701
+main -n 701 -t 100 -t 4
+
+real	0m9.749s
+user	0m32.013s
+sys	0m3.730s
+running for n=801
+main -n 801 -t 100 -t 4
+
+real	0m14.597s
+user	0m48.184s
+sys	0m5.436s
+running for n=901
+main -n 901 -t 100 -t 4
