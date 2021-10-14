@@ -18,6 +18,9 @@ TEST_ARGS = -n 151 -i 100 -t $(shell nproc --all)
 
 TIME_ARGS = -n 201 -i 100 -t $(shell nproc --all)
 
+all: main.c
+	gcc -O3 main.c -o main
+
 super_optimized: CFLAGS+= -fprofile-use
 super_optimized: $(TARGET)
 

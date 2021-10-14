@@ -45,30 +45,23 @@ void* worker(void* vargs)
     const cell_t delta_squared = args->delta_squared;
 
     for (int iter = 0; iter < args->iterations; iter++) {
-        for (int j_block = args->j_block_start * COLUMN_BLOCK_SIZE;
-             j_block < args->j_block_end * COLUMN_BLOCK_SIZE;
-             j_block += COLUMN_BLOCK_SIZE) {
-            for (int k_block = 0; k_block < n; k_block += COLUMN_BLOCK_SIZE) {
-                // printf("j_block %d, k_block %d\n", j_block, k_block);
+        for (int k = 0; k < n; k++) {
+            for (int j = args->j_block_start; j < args->j_block_end; j++) {
                 for (int i = 0; i < n; i++) {
-                    for (int k = k_block; k < MIN(n, k_block + COLUMN_BLOCK_SIZE);
-                         k++) {
-                        for (int j = j_block; j < MIN(n, j_block + COLUMN_BLOCK_SIZE);
-                             j++) {
-                            int ip = (i == n - 1) ? -1 : 1;
-                            int in = (i == 0) ? -1 : 1;
-                            int jp = (j == n - 1) ? -1 : 1;
-                            int jn = (j == 0) ? -1 : 1;
-                            int kp = (k == n - 1) ? -1 : 1;
-                            int kn = (k == 0) ? -1 : 1;
 
-                            cell_t source_term = delta_squared * args->source[IDX(n, i, j, k)];
-                            next[IDX(n, i, j, k)] = 1.0 / 6.0 * (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] + curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] + curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
-                        }
-                    }
+                    int ip = (i == n - 1) ? -1 : 1;
+                    int in = (i == 0) ? -1 : 1;
+                    int jp = (j == n - 1) ? -1 : 1;
+                    int jn = (j == 0) ? -1 : 1;
+                    int kp = (k == n - 1) ? -1 : 1;
+                    int kn = (k == 0) ? -1 : 1;
+
+                    cell_t source_term = delta_squared * args->source[IDX(n, i, j, k)];
+                    next[IDX(n, i, j, k)] = 1.0 / 6.0 * (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] + curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] + curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
                 }
             }
         }
+
         cell_t* temp = curr;
         curr = next;
         next = temp;
@@ -134,28 +127,19 @@ cell_t* poisson_neumann(
     pthread_barrier_init(&barrier, NULL, num_threads);
 
     // init the worker threads
-    int num_blocks = (n + COLUMN_BLOCK_SIZE - 1) / COLUMN_BLOCK_SIZE;
-    int blocks_per_thread = num_blocks / num_threads;
-    int remaining = num_blocks % num_threads;
     // printf("num_blocks: %d, per_thread: %d\n", num_blocks,
     // blocks_per_thread);
-    int block_idx = 0;
+    int per_thread = n / num_threads;
     for (int thread_idx = 0; thread_idx < num_threads; thread_idx++) {
-        int j_block_start = block_idx;
-        int j_block_end = block_idx + blocks_per_thread;
-        if (thread_idx >= num_threads - remaining) {
-            j_block_end += 1;
-        }
-        // printf("thread %d: %d -> %d\n", thread_idx, j_block_start,
-        // j_block_end);
-        block_idx = j_block_end;
+        int start = thread_idx * per_thread;
+        int end = thread_idx == num_threads - 1 ? n : (thread_idx + 1) * per_thread;
 
         thread_args[thread_idx] = (thread_args_t) { .source = source,
             .curr = curr,
             .next = next,
             .n = n,
-            .j_block_start = j_block_start,
-            .j_block_end = j_block_end,
+            .j_block_start = start,
+            .j_block_end = end,
             .iterations = iterations,
             .delta_squared = delta_squared };
 
