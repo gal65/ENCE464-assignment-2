@@ -16,7 +16,7 @@ static bool debug = false;
 #define CACHE_LINE_SIZE 64
 
 // datatype to perform relaxation on
-typedef float cell_t;
+typedef double cell_t;
 
 // Define implementation options:
 
@@ -33,7 +33,7 @@ typedef float cell_t;
 
 // Instead of spinning up a separate thread for the boundary conditions,
 // distribute the 6 boundary faces of the cube over all available threads
-// #define DISTRIBUTE_BOUNDARY
+#define DISTRIBUTE_BOUNDARY
 
 // Compiler hint that x is always true
 #define UNSAFE_ASSERT(x) \
@@ -55,9 +55,9 @@ typedef struct {
 } thread_args_t;
 
 typedef struct {
-    cell_t* source;
-    cell_t* curr;
-    cell_t* next;
+    cell_t* restrict source;
+    cell_t* restrict curr;
+    cell_t* restrict next;
     int n;
     int iterations;
     cell_t delta_squared;
@@ -67,7 +67,7 @@ typedef struct {
 pthread_barrier_t barrier;
 
 inline void do_cell(
-    cell_t* source, cell_t* curr, cell_t* next, cell_t delta_squared, int n, int i, int j, int k);
+    cell_t* restrict source, cell_t* restrict curr, cell_t* restrict next, cell_t delta_squared, int n, int i, int j, int k);
 
 void* worker(void* vargs)
 {
@@ -124,7 +124,7 @@ void* worker(void* vargs)
 #ifdef INDEXING
                     cell_t source_term = delta_squared * args->source[IDX(n, i, j, k)];
                     next[IDX(n, i, j, k)] =
-                        1.0 / 6.0 *
+                        1.0f / 6.0f *
                         (curr[IDX(n, i + 1, j, k)] + curr[IDX(n, i - 1, j, k)] +
                          curr[IDX(n, i, j + 1, k)] + curr[IDX(n, i, j - 1, k)] +
                          curr[IDX(n, i, j, k + 1)] + curr[IDX(n, i, j, k - 1)] - source_term);
@@ -183,7 +183,7 @@ void* worker(void* vargs)
  */
 // TODO do the pointer optimization like in the normal worker task here as well
 inline void do_cell(
-    cell_t* source, cell_t* curr, cell_t* next, cell_t delta_squared, int n, int i, int j, int k)
+    cell_t* restrict source, cell_t* restrict curr, cell_t* restrict next, cell_t delta_squared, int n, int i, int j, int k)
 {
     int ip = (i == n - 1) ? -1 : 1;
     int in = (i == 0) ? -1 : 1;
@@ -193,7 +193,7 @@ inline void do_cell(
     int kn = (k == 0) ? -1 : 1;
 
     cell_t source_term = delta_squared * source[IDX(n, i, j, k)];
-    next[IDX(n, i, j, k)] = 1.0 / 6.0 *
+    next[IDX(n, i, j, k)] = 1.0f / 6.0f *
                             (curr[IDX(n, i + ip, j, k)] + curr[IDX(n, i - in, j, k)] +
                              curr[IDX(n, i, j + jp, k)] + curr[IDX(n, i, j - jn, k)] +
                              curr[IDX(n, i, j, k + kp)] + curr[IDX(n, i, j, k - kn)] - source_term);
@@ -261,7 +261,7 @@ void* boundary_worker(void* vargs)
 }
 #endif
 
-cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, cell_t delta)
+cell_t* poisson_neumann(int n, cell_t* restrict source, int iterations, int num_threads, cell_t delta)
 {
     if (debug) {
         printf(
@@ -380,7 +380,7 @@ cell_t* poisson_neumann(int n, cell_t* source, int iterations, int num_threads, 
 #endif
 
     if (iterations % 2 != 0) {
-        cell_t* temp = curr;
+        cell_t* restrict temp = curr;
         curr = next;
         next = temp;
     }
@@ -452,11 +452,11 @@ int main(int argc, char** argv)
     }
 
 #ifdef CACHE_ALIGN_BUFFERS
-    cell_t* source;
+    cell_t* restrict source;
     posix_memalign((void**)&source, CACHE_LINE_SIZE, n * n * n * sizeof(cell_t));
     memset(source, 0, n * n * n * sizeof(cell_t));
 #else
-    cell_t* source = (cell_t*)calloc(n * n * n, sizeof(cell_t));
+    cell_t* restrict source = (cell_t*)calloc(n * n * n, sizeof(cell_t));
 #endif
 
     source[(n * n * n) / 2] = 1;
