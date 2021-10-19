@@ -17,7 +17,7 @@ static bool debug = false;
 
 #define COLUMN_BLOCK_SIZE 8
 
-typedef double cell_t;
+typedef float cell_t;
 
 typedef struct {
     cell_t* source;
